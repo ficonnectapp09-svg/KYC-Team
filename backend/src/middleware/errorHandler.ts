@@ -8,8 +8,12 @@ export const errorHandler = (
 ): void => {
   console.error('[Error Handler]:', err);
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  const isMulterError = err?.name === 'MulterError';
+  const statusCode = isMulterError ? 400 : err.statusCode || 500;
+  const message =
+    err?.code === 'LIMIT_FILE_SIZE'
+      ? 'Uploaded file exceeds the 50 MB size limit.'
+      : err.message || 'Internal Server Error';
 
   res.status(statusCode).json({
     success: false,

@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { connectDatabase } from './config/database';
+import { configureCloudinary } from './config/cloudinary';
 import { errorHandler } from './middleware/errorHandler';
 
 import authRoutes from './routes/authRoutes';
@@ -18,14 +19,28 @@ import notificationRoutes from './routes/notificationRoutes';
 import auditRoutes from './routes/auditRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import uploadRoutes from './routes/uploadRoutes';
 
 dotenv.config();
+configureCloudinary();
 
 const app = express();
 const PORT = process.env.PORT || 8007;
 
 // Security & Parsing
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com', 'https://placehold.co'],
+        mediaSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
+        frameSrc: ["'self'", 'https://res.cloudinary.com'],
+        connectSrc: ["'self'", 'https://res.cloudinary.com', 'https://api.cloudinary.com']
+      }
+    }
+  })
+);
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -61,6 +76,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Centralized Error Handler
 app.use(errorHandler);

@@ -11,9 +11,12 @@ import {
   ShieldAlert,
   UserPlus,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  Paperclip,
+  FileText,
+  X
 } from 'lucide-react';
-import { apiFetch } from '../../services/api';
+import { apiFetch, uploadMediaFile } from '../../services/api';
 import { QueryTicket, Employee } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
@@ -53,6 +56,8 @@ export const QueriesManagement: React.FC = () => {
   const [showTransferModal, setShowTransferModal] = useState(false);
 
   const [replyMessage, setReplyMessage] = useState('');
+  const [replyAttachments, setReplyAttachments] = useState<{ url: string; name: string; resourceType: string }[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [internalNote, setInternalNote] = useState('');
   const [isDeptPrivate, setIsDeptPrivate] = useState(false);
 
@@ -137,15 +142,41 @@ export const QueriesManagement: React.FC = () => {
     }
   };
 
+  const handleUploadReplyAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingAttachment(true);
+      const uploaded = await uploadMediaFile(file, 'queries');
+      setReplyAttachments((prev) => [
+        ...prev,
+        {
+          url: uploaded.secureUrl,
+          name: uploaded.originalFilename,
+          resourceType: uploaded.resourceType
+        }
+      ]);
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload attachment.');
+    } finally {
+      setUploadingAttachment(false);
+      e.target.value = '';
+    }
+  };
+
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQuery || !replyMessage.trim()) return;
     try {
       await apiFetch(`/queries/${selectedQuery.queryId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ message: replyMessage })
+        body: JSON.stringify({
+          message: replyMessage,
+          attachments: replyAttachments.map((a) => a.url)
+        })
       });
       setReplyMessage('');
+      setReplyAttachments([]);
       await refreshSelectedQuery(selectedQuery.queryId);
     } catch (err: any) {
       alert(err.message);
@@ -565,27 +596,111 @@ export const QueriesManagement: React.FC = () => {
                       <span className="text-[10px] text-slate-400">{new Date(msg.timestamp).toLocaleString()}</span>
                     </div>
                     <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{msg.message}</p>
+                    {(msg.attachments?.length || 0) > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {msg.attachments!.map((attUrl, idx) => {
+                          const lower = attUrl.toLowerCase();
+                          if (/\.(mp4|webm|mov|avi)(\?|$)/.test(lower) || lower.includes('/video/upload/')) {
+                            return (
+                              <video
+                                key={idx}
+                                src={attUrl}
+                                controls
+                                className="max-h-36 rounded-lg border border-slate-200 dark:border-slate-700"
+                              />
+                            );
+                          }
+                          if (
+                            /\.(png|jpe?g|webp|gif)(\?|$)/.test(lower) ||
+                            (lower.includes('/image/upload/') && !lower.includes('.pdf'))
+                          ) {
+                            return (
+                              <a key={idx} href={attUrl} target="_blank" rel="noreferrer">
+                                <img
+                                  src={attUrl}
+                                  alt={`Attachment ${idx + 1}`}
+                                  className="max-h-28 rounded-lg border border-slate-200 dark:border-slate-700 object-cover"
+                                />
+                              </a>
+                            );
+                          }
+                          return (
+                            <a
+                              key={idx}
+                              href={attUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold hover:underline"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Document {idx + 1}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
               {selectedQuery.status !== 'Resolved' && (
-                <form onSubmit={handleSendReply} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Write a shared case update or customer reply..."
-                    value={replyMessage}
-                    onChange={e => setReplyMessage(e.target.value)}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-                  />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Send</span>
-                  </button>
-                </form>
+                <div className="space-y-2">
+                  {replyAttachments.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {replyAttachments.map((att, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold"
+                        >
+                          <span className="max-w-[160px] truncate">{att.name}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReplyAttachments((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            className="hover:text-rose-500"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <form onSubmit={handleSendReply} className="flex gap-2">
+                    <label
+                      title="Attach image, video, or document (Cloudinary)"
+                      className="inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      <input
+                        type="file"
+                        accept="image/*,video/*,.pdf,.doc,.docx,.csv,.txt"
+                        disabled={uploadingAttachment}
+                        onChange={handleUploadReplyAttachment}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={
+                        uploadingAttachment
+                          ? 'Uploading attachment to Cloudinary...'
+                          : 'Write a shared case update or customer reply...'
+                      }
+                      value={replyMessage}
+                      onChange={e => setReplyMessage(e.target.value)}
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    />
+                    <button
+                      type="submit"
+                      disabled={uploadingAttachment}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 disabled:opacity-50 text-white font-bold"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Send</span>
+                    </button>
+                  </form>
+                </div>
               )}
             </div>
 

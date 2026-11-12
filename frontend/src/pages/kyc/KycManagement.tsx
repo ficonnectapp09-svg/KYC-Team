@@ -18,7 +18,7 @@ import {
   UploadCloud,
   Database
 } from 'lucide-react';
-import { apiFetch } from '../../services/api';
+import { apiFetch, uploadMediaFile } from '../../services/api';
 import { KycRequest, Employee } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
@@ -73,6 +73,8 @@ export const KycManagement: React.FC = () => {
   const [actionReason, setActionReason] = useState('');
   const [reuploadDocType, setReuploadDocType] = useState('');
   const [resubmitUrl, setResubmitUrl] = useState('https://placehold.co/700x450/png?text=Corrected+KYC+Document+v2');
+  const [resubmitDocName, setResubmitDocName] = useState('');
+  const [uploadingResubmit, setUploadingResubmit] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const loadData = async (targetPage = page) => {
@@ -132,6 +134,23 @@ export const KycManagement: React.FC = () => {
     }
   };
 
+  const handleResubmitFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingResubmit(true);
+      const uploaded = await uploadMediaFile(file, 'kyc');
+      setResubmitUrl(uploaded.secureUrl);
+      setResubmitDocName(uploaded.originalFilename);
+      setFeedbackMsg(`Uploaded "${uploaded.originalFilename}" to Cloudinary storage.`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload file to Cloudinary.');
+    } finally {
+      setUploadingResubmit(false);
+      e.target.value = '';
+    }
+  };
+
   const handleResubmitDoc = async () => {
     if (!selectedReq) return;
     const targetDoc = reuploadDocType || selectedReq.documents[activeDocIndex]?.docType;
@@ -142,11 +161,13 @@ export const KycManagement: React.FC = () => {
         body: JSON.stringify({
           docType: targetDoc,
           docUrl: resubmitUrl,
+          docName: resubmitDocName || undefined,
           remarks: 'Corrected document uploaded with clearer resolution.'
         })
       });
       setFeedbackMsg(res.message || 'Resubmission recorded with prior version preserved.');
       setSelectedReq(res.data);
+      setResubmitDocName('');
       setActionMode('NONE');
       await loadData();
     } catch (err: any) {
@@ -719,20 +740,39 @@ export const KycManagement: React.FC = () => {
               {/* Document Canvas */}
               <div className="h-96 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-auto p-4 relative">
                 {selectedReq.documents[activeDocIndex] ? (
-                  selectedReq.documents[activeDocIndex].docUrl.toLowerCase().includes('.pdf') ? (
-                    <iframe
-                      src={selectedReq.documents[activeDocIndex].docUrl}
-                      title={selectedReq.documents[activeDocIndex].docName}
-                      className="w-full h-full rounded-lg bg-white"
-                    />
-                  ) : (
-                    <img
-                      src={selectedReq.documents[activeDocIndex].docUrl}
-                      alt={selectedReq.documents[activeDocIndex].docName}
-                      style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease' }}
-                      className="max-h-full rounded-lg object-contain shadow-xl"
-                    />
-                  )
+                  (() => {
+                    const url = selectedReq.documents[activeDocIndex].docUrl;
+                    const lowerUrl = url.toLowerCase();
+                    if (lowerUrl.includes('.pdf') || lowerUrl.includes('/raw/upload/')) {
+                      return (
+                        <iframe
+                          src={url}
+                          title={selectedReq.documents[activeDocIndex].docName}
+                          className="w-full h-full rounded-lg bg-white"
+                        />
+                      );
+                    }
+                    if (
+                      lowerUrl.includes('/video/upload/') ||
+                      /\.(mp4|webm|mov|avi)(\?|$)/.test(lowerUrl)
+                    ) {
+                      return (
+                        <video
+                          src={url}
+                          controls
+                          className="max-h-full w-full rounded-lg object-contain shadow-xl"
+                        />
+                      );
+                    }
+                    return (
+                      <img
+                        src={url}
+                        alt={selectedReq.documents[activeDocIndex].docName}
+                        style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease' }}
+                        className="max-h-full rounded-lg object-contain shadow-xl"
+                      />
+                    );
+                  })()
                 ) : (
                   <span className="text-slate-500">No document preview available</span>
                 )}
@@ -890,18 +930,38 @@ export const KycManagement: React.FC = () => {
 
                   {actionMode === 'RESUBMIT' && (
                     <div className="space-y-2 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800">
-                      <label className="font-bold text-sky-800 dark:text-sky-300">Applicant Corrected Document URL (v2+)</label>
+                      <label className="font-bold text-sky-800 dark:text-sky-300">
+                        Upload Corrected Image, Video, or Document (v2+)
+                      </label>
+                      <label className="flex items-center justify-center gap-2 w-full p-2.5 rounded-lg border border-dashed border-sky-400 dark:border-sky-700 bg-white dark:bg-slate-900 text-sky-700 dark:text-sky-300 font-semibold cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/50">
+                        <UploadCloud className="w-4 h-4" />
+                        <span>
+                          {uploadingResubmit ? 'Uploading to Cloudinary...' : 'Choose File (Image / Video / PDF / Doc)'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*,video/*,.pdf,.doc,.docx"
+                          disabled={uploadingResubmit}
+                          onChange={handleResubmitFileSelect}
+                          className="hidden"
+                        />
+                      </label>
                       <input
                         type="text"
                         value={resubmitUrl}
                         onChange={e => setResubmitUrl(e.target.value)}
+                        placeholder="Cloudinary file URL or external document URL"
                         className="w-full p-2 rounded-lg bg-white dark:bg-slate-900 border text-xs"
                       />
                       <div className="flex gap-2">
                         <button onClick={() => setActionMode('NONE')} className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-bold">
                           Cancel
                         </button>
-                        <button onClick={handleResubmitDoc} className="flex-1 py-1.5 rounded-lg bg-sky-600 text-white font-bold">
+                        <button
+                          onClick={handleResubmitDoc}
+                          disabled={uploadingResubmit || !resubmitUrl.trim()}
+                          className="flex-1 py-1.5 rounded-lg bg-sky-600 disabled:opacity-50 text-white font-bold"
+                        >
                           Upload & Archive Prior Version
                         </button>
                       </div>

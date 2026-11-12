@@ -203,6 +203,7 @@ export interface QueryTicket {
     senderName: string;
     senderRole: string;
     message: string;
+    attachments?: string[];
     timestamp: string;
   }[];
   internalNotes: {

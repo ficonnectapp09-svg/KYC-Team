@@ -12,9 +12,10 @@ import {
   PauseCircle,
   Eye,
   Edit3,
-  CalendarCheck2
+  CalendarCheck2,
+  UploadCloud
 } from 'lucide-react';
-import { apiFetch } from '../../services/api';
+import { apiFetch, uploadMediaFile } from '../../services/api';
 import { Employee } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
@@ -67,6 +68,7 @@ export const StaffManagement: React.FC = () => {
 
   const [showOnboardModal, setShowOnboardModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [empOverview, setEmpOverview] = useState<any>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'attendance' | 'performance' | 'salary'>('info');
@@ -159,6 +161,21 @@ export const StaffManagement: React.FC = () => {
     }
   };
 
+  const handleUploadStaffPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingEmp) return;
+    try {
+      setUploadingPhoto(true);
+      const uploaded = await uploadMediaFile(file, 'staff');
+      setEditingEmp({ ...editingEmp, photo: uploaded.secureUrl });
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload profile photo.');
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
   const handleSaveEditEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEmp) return;
@@ -172,7 +189,8 @@ export const StaffManagement: React.FC = () => {
           designation: editingEmp.designation,
           department: editingEmp.department,
           workLocation: editingEmp.workLocation,
-          salaryCycle: editingEmp.salaryCycle
+          salaryCycle: editingEmp.salaryCycle,
+          photo: editingEmp.photo || ''
         })
       });
       setEditingEmp(null);
@@ -953,6 +971,35 @@ export const StaffManagement: React.FC = () => {
                   <option value="Weekly">Weekly</option>
                 </select>
               </div>
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Profile Photo (Cloudinary)
+                </label>
+                <div className="flex items-center gap-3">
+                  {editingEmp.photo ? (
+                    <img
+                      src={editingEmp.photo}
+                      alt={editingEmp.name}
+                      className="w-11 h-11 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center">
+                      {editingEmp.name.charAt(0)}
+                    </div>
+                  )}
+                  <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold cursor-pointer">
+                    <UploadCloud className="w-4 h-4 text-indigo-600" />
+                    <span>{uploadingPhoto ? 'Uploading...' : 'Upload Profile Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingPhoto}
+                      onChange={handleUploadStaffPhoto}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button type="button" onClick={() => setEditingEmp(null)} className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 font-semibold">
@@ -978,9 +1025,17 @@ export const StaffManagement: React.FC = () => {
           <div className="space-y-4 text-xs">
             <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white text-xl font-bold flex items-center justify-center">
-                  {selectedEmp.name.charAt(0)}
-                </div>
+                {selectedEmp.photo ? (
+                  <img
+                    src={selectedEmp.photo}
+                    alt={selectedEmp.name}
+                    className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white text-xl font-bold flex items-center justify-center">
+                    {selectedEmp.name.charAt(0)}
+                  </div>
+                )}
                 <div>
                   <h4 className="text-base font-bold text-slate-900 dark:text-white">{selectedEmp.name}</h4>
                   <p className="text-indigo-600 dark:text-indigo-400 font-semibold">

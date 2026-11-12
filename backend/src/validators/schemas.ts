@@ -50,6 +50,7 @@ export const updateEmployeeSchema = z.object({
   address: z.string().optional(),
   salaryCycle: z.nativeEnum(SalaryCycle).optional(),
   reportingLead: z.string().nullable().optional(),
+  photo: z.string().optional(),
   permissions: z.array(z.string()).optional(),
   emergencyContact: z
     .object({
