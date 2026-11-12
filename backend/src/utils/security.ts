@@ -9,8 +9,21 @@ export const buildIdFilter = (fieldName: string, id: string) => {
   return { [fieldName]: id };
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || 'connect_app_backoffice_jwt_secret_key_2026_enterprise';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'connect_app_backoffice_refresh_secret_key_2026_enterprise';
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required.');
+  }
+  return secret;
+};
+
+const getRefreshTokenSecret = (): string => {
+  const secret = process.env.REFRESH_TOKEN_SECRET?.trim();
+  if (!secret) {
+    throw new Error('REFRESH_TOKEN_SECRET environment variable is required.');
+  }
+  return secret;
+};
 
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = await bcrypt.genSalt(10);
@@ -22,16 +35,16 @@ export const comparePassword = async (candidate: string, hash: string): Promise<
 };
 
 export const generateAccessToken = (payload: object): string => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 };
 
 export const generateRefreshToken = (payload: object): string => {
-  return jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
+  return jwt.sign(payload, getRefreshTokenSecret(), { expiresIn: '30d' });
 };
 
 export const verifyAccessToken = (token: string): any => {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch (error) {
     return null;
   }
@@ -39,7 +52,7 @@ export const verifyAccessToken = (token: string): any => {
 
 export const verifyRefreshToken = (token: string): any => {
   try {
-    return jwt.verify(token, REFRESH_TOKEN_SECRET);
+    return jwt.verify(token, getRefreshTokenSecret());
   } catch (error) {
     return null;
   }

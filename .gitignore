@@ -1,23 +1,69 @@
-# Logs
+# Logs & Debug Output
 logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Node modules
+# Dependencies
 node_modules
+node_modules/
+
+# Build Outputs & Caches
 dist
+dist/
 dist-ssr
+build/
+coverage/
+.cache/
+.tmp/
+.temp/
 *.local
 
-# Environment variables
+# Environment Secrets
 .env
-.env.production
-.env.development
-.env.test
+.env.*
+.env.*.local
+!.env.example
+
+# Private Project Instructions
+AGENT.md
+AGENTS.md
+CHANGELOG.md
+
+# Private Keys & Certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+firebase-adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+
+# Database Files & Backups
+*.dump
+*.bson
+*.backup
+*.sqlite
+*.sqlite3
+database-backup/
+db-backup/
+backups/
+mongodb-dumps/
+
+# Private Documents & Uploads
+private-uploads/
+secure-uploads/
+customer-documents/
+vendor-documents/
+kyc-documents/
+aadhaar-documents/
+pan-documents/
+private-storage/
 
 # IDE & Editor files
 .vscode/*
@@ -32,4 +78,3 @@ dist-ssr
 # OS generated files
 .DS_Store
 Thumbs.db
-

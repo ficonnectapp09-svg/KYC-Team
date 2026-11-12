@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "[pre-push] Inspecting outgoing commits for secrets and prohibited files..."
+node scripts/git-security-scan.mjs --pre-push
+

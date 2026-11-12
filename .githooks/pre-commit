@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "[pre-commit] Running Connect App Backoffice Git Security Scan..."
+node scripts/git-security-scan.mjs --staged
+
