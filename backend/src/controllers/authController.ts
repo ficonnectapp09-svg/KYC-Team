@@ -15,7 +15,19 @@ export class AuthController {
         });
       }
 
-      const employee = await Employee.findOne({ email: email.toLowerCase().trim() });
+      const normalizedEmail = email.toLowerCase().trim();
+      const aliasVariant = normalizedEmail
+        .replace(/^kyclead@/, 'kyc.lead@')
+        .replace(/^kycstaff@/, 'kyc.staff@')
+        .replace(/^paymentlead@/, 'payment.lead@')
+        .replace(/^paymentstaff@/, 'payment.staff@')
+        .replace(/^querieslead@/, 'queries.lead@')
+        .replace(/^queriesstaff@/, 'queries.staff@')
+        .replace(/^overalllead@/, 'lead@');
+
+      const employee = await Employee.findOne({
+        email: { $in: [normalizedEmail, aliasVariant] }
+      });
       if (!employee) {
         return res.status(401).json({
           success: false,
