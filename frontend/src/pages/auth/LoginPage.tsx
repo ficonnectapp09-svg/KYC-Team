@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { Building2, Lock, Mail, ArrowRight, AlertCircle, ShieldCheck, UserCheck, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const LoginPage: React.FC = () => {
@@ -12,16 +12,46 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const redirectByRole = (userRole?: string) => {
+    if (userRole === 'overall_lead') {
+      navigate('/overall');
+    } else if (userRole?.includes('kyc')) {
+      navigate('/kyc');
+    } else if (userRole?.includes('payment')) {
+      navigate('/payment');
+    } else if (userRole?.includes('queries')) {
+      navigate('/queries');
+    } else {
+      navigate('/');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate('/overall');
+      const loggedUser = await login(email, password);
+      redirectByRole(loggedUser?.role);
     } catch (err: any) {
       setError(err.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickLogin = async (quickEmail: string, quickPass: string, targetPath: string) => {
+    setError(null);
+    setLoading(true);
+    setEmail(quickEmail);
+    setPassword(quickPass);
+
+    try {
+      const loggedUser = await login(quickEmail, quickPass);
+      navigate(targetPath || (loggedUser?.role?.includes('kyc') ? '/kyc' : '/overall'));
+    } catch (err: any) {
+      setError(err.message || 'Quick login failed.');
     } finally {
       setLoading(false);
     }
@@ -102,9 +132,98 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+
+          {/* Quick 1-Click Role Login Section */}
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span>Quick 1-Click Role Login (Moves to Dashboard)</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* KYC Team Lead - Primary Highlight */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin('kyc.lead@connectapp.in', 'Connect@2026', '/kyc')}
+                className="p-3.5 rounded-2xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/50 hover:border-indigo-400 text-left transition-all group disabled:opacity-50 shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-white group-hover:text-indigo-300 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-400" />
+                    KYC Team Lead
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </div>
+                <div className="text-xs text-indigo-200/70 font-mono mt-0.5">kyc.lead@connectapp.in</div>
+                <div className="text-[11px] text-slate-400 mt-1">Directly opens KYC Operations & Approvals</div>
+              </button>
+
+              {/* KYC Specialist */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin('kyc.staff@connectapp.in', 'Connect@2026', '/kyc')}
+                className="p-3.5 rounded-2xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 hover:border-indigo-400/50 text-left transition-all group disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-white group-hover:text-indigo-300">KYC Specialist</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                </div>
+                <div className="text-xs text-slate-400 font-mono mt-0.5">kyc.staff@connectapp.in</div>
+                <div className="text-[11px] text-slate-400 mt-1">Directly opens KYC Verification Queue</div>
+              </button>
+
+              {/* Overall Team Lead */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin('lead@connectapp.in', 'Connect@2026', '/overall')}
+                className="p-3.5 rounded-2xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 hover:border-indigo-400/50 text-left transition-all group disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-white group-hover:text-indigo-300">Overall Team Lead</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                </div>
+                <div className="text-xs text-slate-400 font-mono mt-0.5">lead@connectapp.in</div>
+                <div className="text-[11px] text-slate-400 mt-1">Directly opens Overall Executive Dashboard</div>
+              </button>
+
+              {/* Payment Team Lead */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin('payment.lead@connectapp.in', 'Connect@2026', '/payment')}
+                className="p-3.5 rounded-2xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 hover:border-indigo-400/50 text-left transition-all group disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-white group-hover:text-indigo-300">Payment Team Lead</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                </div>
+                <div className="text-xs text-slate-400 font-mono mt-0.5">payment.lead@connectapp.in</div>
+                <div className="text-[11px] text-slate-400 mt-1">Directly opens Payment & Ledger Dashboard</div>
+              </button>
+
+              {/* Queries Team Lead */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin('queries.lead@connectapp.in', 'Connect@2026', '/queries')}
+                className="sm:col-span-2 p-3.5 rounded-2xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 hover:border-indigo-400/50 text-left transition-all group disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-white group-hover:text-indigo-300">Queries Team Lead</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                </div>
+                <div className="text-xs text-slate-400 font-mono mt-0.5">queries.lead@connectapp.in</div>
+                <div className="text-[11px] text-slate-400 mt-1">Directly opens Queries & Support Dashboard</div>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
 

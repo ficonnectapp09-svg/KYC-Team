@@ -5,7 +5,7 @@ import { apiFetch, setAuthToken, removeAuthToken, getAuthToken } from '../servic
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   hasRole: (roles: string[]) => boolean;
   hasDepartment: (depts: string[]) => boolean;
@@ -46,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User> => {
     const res = await apiFetch<{ accessToken: string; user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
@@ -56,7 +56,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthToken(res.data.accessToken);
       setUser(res.data.user);
       localStorage.setItem('connect_backoffice_user', JSON.stringify(res.data.user));
+      return res.data.user;
     }
+    throw new Error(res.message || 'Login failed.');
   };
 
   const logout = () => {
