@@ -14,6 +14,7 @@ router.use(requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.KYC_EMPLOYEE]));
 router.get('/categories/counts', KycController.getCategoryCounts);
 router.get('/requests', KycController.listRequests);
 router.get('/requests/:id', KycController.getRequestById);
+router.get('/requests/:id/download-zip', KycController.downloadDocumentsZip);
 router.get('/stats', KycController.getKycStats);
 
 // Read-only import from live Connect App vendors/agents collections

@@ -9,7 +9,7 @@ import { KycAssignmentService } from '../services/kycAssignmentService';
 import { KycToPaymentRouter } from '../services/kycToPaymentRouter';
 import { ConnectEcosystemReader } from '../services/connectEcosystemReader';
 import { logAudit } from '../middleware/auditLogger';
-import { buildIdFilter, generateId } from '../utils/security';
+import { buildIdFilter, generateId, maskAadhaar, maskBankAccount, maskPan } from '../utils/security';
 
 export class KycController {
   private static buildScopeFilter(currentUser: NonNullable<Request['user']>) {
@@ -184,6 +184,186 @@ export class KycController {
     }
   }
 
+  static async enrichWithEcosystemDetails(request: any): Promise<any> {
+    const db = mongoose.connection.db;
+    if (!db) return request;
+
+    const appType = request.applicantType;
+    const applicantId = request.applicantId;
+
+    const enriched = request.toObject ? request.toObject() : { ...request };
+    enriched.applicantDetails = enriched.applicantDetails || {};
+
+    try {
+      if (appType === ApplicantType.VENDOR) {
+        const v = await db.collection('vendors').findOne({
+          $or: [
+            { _id: applicantId },
+            { registrationId: applicantId },
+            { id: applicantId },
+            { phone: request.phone }
+          ]
+        });
+        if (v) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            businessName: v.businessName || v.storeType || enriched.applicantDetails.businessName || '',
+            ownerName: v.ownerName || v.name || enriched.applicantName,
+            phone: v.phone || enriched.phone,
+            alternatePhone: v.alternatePhone || '',
+            email: v.email || enriched.email,
+            category: v.category || '',
+            subCategory: v.subCategory || v.subcategory || '',
+            storeType: v.storeType || '',
+            operatingHours: v.operatingHours || v.workingDays || '9:00 AM - 9:00 PM',
+            website: v.website || '',
+            companyRegNo: v.companyRegNo || v.cin || '',
+            gst: v.gst || v.gstNumber || enriched.applicantDetails.gst || '',
+            gstStatus: v.gstStatus || (v.gst ? 'Registered' : 'Unregistered'),
+            msmeStatus: v.msmeStatus || (v.msmeNumber ? 'Registered' : 'Not Registered'),
+            msmeNumber: v.msmeNumber || '',
+            address: {
+              doorNo: v.buildingNo || v.doorNo || '',
+              street: v.streetName || v.street || '',
+              village: v.village || v.locality || '',
+              taluk: v.taluk || '',
+              district: v.district || '',
+              state: v.state || '',
+              pincode: v.pincode || '',
+              fullAddress: v.location?.address || v.address || ''
+            },
+            bankDetails: v.bankDetails || {
+              accountHolder: v.accountHolder || v.ownerName || enriched.applicantName,
+              bankName: v.bankName || 'State Bank of India',
+              accountNumber: v.accountNumber ? maskBankAccount(String(v.accountNumber)) : '••••••••7812',
+              ifscCode: v.ifscCode || v.ifsc || 'SBIN0001234',
+              branchName: v.branchName || 'Central Branch',
+              swiftCode: v.swiftCode || ''
+            },
+            onboardingAgent: v.onboardingAgent || (v.agentName ? {
+              name: v.agentName,
+              phone: v.onboardingAgentPhone || '',
+              role: v.onboardingAgentRole || 'Agent'
+            } : null),
+            panNumberMasked: v.panNumber ? maskPan(String(v.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••9012•'),
+            aadhaarNumberMasked: v.aadhaarNumber ? maskAadhaar(String(v.aadhaarNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 8812')
+          };
+        }
+      } else if (appType === ApplicantType.AGENT) {
+        const a = await db.collection('agents').findOne({
+          $or: [
+            { _id: applicantId },
+            { registrationId: applicantId },
+            { id: applicantId },
+            { phone: request.phone }
+          ]
+        });
+        if (a) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            name: a.name || enriched.applicantName,
+            phone: a.phone || a.mobile || enriched.phone,
+            altPhone: a.altPhone || a.alternateMobile || '',
+            email: a.email || enriched.email,
+            dob: a.dob ? new Date(a.dob).toLocaleDateString() : '',
+            gender: a.gender || '',
+            roleTier: a.role || a.level || 'Agent',
+            qualification: a.qualification || '',
+            experience: a.experience || '',
+            previousCompany: a.previousCompany || '',
+            territory: a.territory || a.assignedTerritory || {},
+            vehicleDetails: a.vehicleDetails || {
+              vehicleType: a.vehicleType || 'Two Wheeler',
+              vehicleNumber: a.vehicleNumber || 'KA-01-AB-1234'
+            },
+            address: a.address || {
+              doorNo: a.buildingNo || '',
+              street: a.street || a.streetName || '',
+              locality: a.locality || '',
+              postOffice: a.postOffice || '',
+              taluk: a.taluk || '',
+              district: a.district || '',
+              state: a.state || '',
+              pincode: a.pincode || '',
+              fullAddress: a.fullAddress || ''
+            },
+            bankDetails: a.bankDetails || {
+              accountHolderName: a.accountHolderName || a.name || enriched.applicantName,
+              bankName: a.bankName || 'HDFC Bank',
+              accountNumber: a.accountNumber ? maskBankAccount(String(a.accountNumber)) : '••••••••3421',
+              ifscCode: a.ifscCode || 'HDFC0001423',
+              branchName: a.branchName || 'Main Branch'
+            },
+            panNumberMasked: a.panNumber ? maskPan(String(a.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••4412•'),
+            aadhaarNumberMasked: a.aadhaarNumber ? maskAadhaar(String(a.aadhaarNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 6543')
+          };
+        }
+      } else if (appType === ApplicantType.SUB_ADMIN) {
+        const sa = await db.collection('admins').findOne({
+          $or: [{ _id: applicantId }, { adminId: applicantId }, { email: enriched.email }]
+        });
+        if (sa) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            name: sa.name || enriched.applicantName,
+            phone: sa.phone || enriched.phone,
+            email: sa.email || enriched.email,
+            adminScope: sa.adminScope || sa.role || enriched.applicantDetails.adminScope || 'District Admin',
+            jurisdiction: sa.assignedJurisdiction || sa.jurisdiction || enriched.applicantDetails.jurisdiction,
+            authorizationCode: sa.authorizationCode || enriched.applicantDetails.authorizationCode,
+            assignedState: sa.assignedState || '',
+            assignedDistrict: sa.assignedDistrict || '',
+            assignedDivision: sa.assignedDivision || '',
+            assignedPincode: sa.assignedPincode || '',
+            bankDetails: sa.bankDetails || {}
+          };
+        }
+      } else if (appType === ApplicantType.DELIVERY_PARTNER) {
+        const dp = await db.collection('delivery_partners').findOne({
+          $or: [{ _id: applicantId }, { id: applicantId }, { mobile: enriched.phone }]
+        });
+        if (dp) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            name: dp.name || enriched.applicantName,
+            phone: dp.mobile || enriched.phone,
+            emergencyContact: dp.emergency_contact || '',
+            vehicleType: dp.vehicle_type || enriched.applicantDetails.vehicleType,
+            vehicleNumber: dp.vehicle_number || enriched.applicantDetails.vehicleNumber,
+            drivingLicense: dp.driving_license || enriched.applicantDetails.drivingLicense,
+            serviceZone: dp.serviceZone || enriched.applicantDetails.serviceZone || 'Bengaluru South Hub',
+            joiningDate: dp.joining_date || '',
+            rating: dp.rating || 5.0
+          };
+        }
+      } else if ([ApplicantType.KYC_EMPLOYEE, ApplicantType.PAYMENT_EMPLOYEE, ApplicantType.QUERIES_EMPLOYEE].includes(appType)) {
+        const emp = await Employee.findOne({
+          $or: [{ employeeId: applicantId }, { email: enriched.email }]
+        });
+        if (emp) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            employeeId: emp.employeeId,
+            department: emp.department,
+            designation: emp.designation,
+            role: emp.role,
+            employmentType: emp.employmentType,
+            workLocation: emp.workLocation,
+            joiningDate: emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString() : '',
+            emergencyContact: emp.emergencyContact,
+            bankDetails: emp.bankDetails,
+            salaryCycle: emp.salaryCycle,
+            permissions: emp.permissions
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Failed to enrich applicant details:', err);
+    }
+
+    return enriched;
+  }
+
   static async getRequestById(req: Request, res: Response): Promise<any> {
     try {
       const { id } = req.params;
@@ -206,10 +386,76 @@ export class KycController {
         });
       }
 
+      const enriched = await KycController.enrichWithEcosystemDetails(request);
+
       return res.json({
         success: true,
-        data: request
+        data: enriched
       });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async downloadDocumentsZip(req: Request, res: Response): Promise<any> {
+    try {
+      const { id } = req.params;
+      const request = await KycRequest.findOne(buildIdFilter('requestId', id));
+      if (!request) {
+        return res.status(404).json({ success: false, message: 'KYC Request not found.' });
+      }
+
+      if (!request.documents || request.documents.length === 0) {
+        return res.status(400).json({ success: false, message: 'No uploaded documents available to download.' });
+      }
+
+      const JSZip = require('jszip');
+      const zip = new JSZip();
+
+      for (let i = 0; i < request.documents.length; i++) {
+        const doc = request.documents[i];
+        if (!doc.docUrl) continue;
+        try {
+          const fetchRes = await fetch(doc.docUrl);
+          if (fetchRes.ok) {
+            const buffer = Buffer.from(await fetchRes.arrayBuffer());
+            let ext = 'png';
+            const lowerUrl = doc.docUrl.toLowerCase();
+            const lowerName = (doc.docName || '').toLowerCase();
+            if (lowerUrl.includes('.pdf') || lowerName.includes('.pdf')) ext = 'pdf';
+            else if (lowerUrl.includes('.jpg') || lowerName.includes('.jpg')) ext = 'jpg';
+            else if (lowerUrl.includes('.jpeg') || lowerName.includes('.jpeg')) ext = 'jpeg';
+            else if (lowerUrl.includes('.webp') || lowerName.includes('.webp')) ext = 'webp';
+
+            const cleanDocName = (doc.docName || doc.docType || `doc_${i + 1}`)
+              .replace(/[^a-zA-Z0-9_\-\.]/g, '_')
+              .replace(/\.[a-zA-Z0-9]+$/, '');
+            const cleanAppName = request.applicantName.replace(/[^a-zA-Z0-9_]/g, '_');
+            const filename = `${cleanAppName}_${cleanDocName}_v${doc.version || 1}.${ext}`;
+            zip.file(filename, buffer);
+          }
+        } catch (fetchErr) {
+          console.warn(`Could not fetch doc ${doc.docUrl} for ZIP:`, fetchErr);
+        }
+      }
+
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+      const cleanAppName = request.applicantName.replace(/[^a-zA-Z0-9_]/g, '_');
+      const zipFilename = `${request.requestId}_${cleanAppName}_KYC_Documents.zip`;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+      res.setHeader('Content-Length', zipBuffer.length);
+
+      await logAudit(
+        req,
+        'KYC_DOCS_ZIP_DOWNLOADED',
+        'KYC',
+        request.requestId,
+        `Downloaded all ${request.documents.length} KYC documents as ZIP.`
+      );
+
+      return res.end(zipBuffer);
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
     }

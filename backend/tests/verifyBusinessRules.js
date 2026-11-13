@@ -1,5 +1,5 @@
 const BASE_URL = 'http://localhost:8007/api';
-const FRONTEND_URL = 'http://localhost:5175';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5176';
 
 async function login(email) {
   const res = await fetch(`${BASE_URL}/auth/login`, {
@@ -752,7 +752,7 @@ async function runTests() {
       `Section 31.G-H Purpose classification guard (400), duplicate payout block (409) & export RBAC (Maker 403 / Lead 200) verified`
     );
   } catch (err) {
-    console.error('❌ Test suite threw exception:', err.message);
+    console.error(err.stack, err.cause);
     failed++;
   }
 
