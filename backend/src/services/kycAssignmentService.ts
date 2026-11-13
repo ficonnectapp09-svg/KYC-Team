@@ -55,6 +55,18 @@ export class KycAssignmentService {
       timestamp: new Date()
     });
 
+    request.approvalHistory = request.approvalHistory || [];
+    request.approvalHistory.push({
+      action: 'ASSIGNED',
+      status: KycStatus.ASSIGNED,
+      actorId: 'SYSTEM',
+      actorName: 'SYSTEM_LOAD_BALANCER',
+      actorRole: 'system',
+      actorDepartment: 'System',
+      timestamp: new Date(),
+      remarks: `Automatically assigned to ${selected.name} (${selected.employeeId})`
+    });
+
     await request.save();
     return request;
   }
@@ -93,6 +105,18 @@ export class KycAssignmentService {
       reason: reason || (isReassignment ? 'Team Lead operational reassignment' : 'Team Lead initial manual assignment'),
       assignmentType: isReassignment ? 'REASSIGNMENT' : 'MANUAL',
       timestamp: new Date()
+    });
+
+    request.approvalHistory = request.approvalHistory || [];
+    request.approvalHistory.push({
+      action: isReassignment ? 'REASSIGNED' : 'ASSIGNED',
+      status: KycStatus.ASSIGNED,
+      actorId: assignedByUser.id,
+      actorName: assignedByUser.name,
+      actorRole: assignedByUser.role,
+      actorDepartment: 'KYC Team',
+      timestamp: new Date(),
+      remarks: `Assigned to ${targetEmployee.name} (${targetEmployee.employeeId}). ${reason || ''}`
     });
 
     await request.save();

@@ -33,7 +33,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com', 'https://placehold.co'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
         mediaSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
         frameSrc: ["'self'", 'https://res.cloudinary.com'],
         connectSrc: ["'self'", 'https://res.cloudinary.com', 'https://api.cloudinary.com']

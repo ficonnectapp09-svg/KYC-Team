@@ -6,6 +6,7 @@ export interface IFinancialApprovalHistory {
   actorId: string;
   actorName: string;
   actorRole: string;
+  actorDepartment?: string;
   details: string;
   timestamp: Date;
 }
@@ -27,12 +28,14 @@ export interface IFinancialApproval extends Document {
   makerId: string;
   makerName: string;
   makerRole: string;
+  makerDepartment?: string;
   makerNotes?: string;
   initiatedAt: Date;
   status: ApprovalStatus;
   checkerId?: string | null;
   checkerName?: string | null;
   checkerRole?: string | null;
+  checkerDepartment?: string | null;
   reviewedAt?: Date | null;
   rejectionReason?: string;
   processedAt?: Date | null;
@@ -48,6 +51,7 @@ const HistorySchema = new Schema<IFinancialApprovalHistory>({
   actorId: { type: String, required: true },
   actorName: { type: String, required: true },
   actorRole: { type: String, required: true },
+  actorDepartment: { type: String, default: '' },
   details: { type: String, default: '' },
   timestamp: { type: Date, default: Date.now }
 }, { _id: false });
@@ -74,6 +78,7 @@ const FinancialApprovalSchema = new Schema<IFinancialApproval>({
   makerId: { type: String, required: true, index: true },
   makerName: { type: String, required: true },
   makerRole: { type: String, required: true },
+  makerDepartment: { type: String, default: '' },
   makerNotes: { type: String, default: '' },
   initiatedAt: { type: Date, default: Date.now },
   status: {
@@ -85,6 +90,7 @@ const FinancialApprovalSchema = new Schema<IFinancialApproval>({
   checkerId: { type: String, default: null, index: true },
   checkerName: { type: String, default: null },
   checkerRole: { type: String, default: null },
+  checkerDepartment: { type: String, default: null },
   reviewedAt: { type: Date, default: null },
   rejectionReason: { type: String, default: '' },
   processedAt: { type: Date, default: null },

@@ -77,7 +77,14 @@ export class StaffController {
         });
       }
 
-      const hashedPassword = await hashPassword(password || 'Connect@2026');
+      if (!password || String(password).trim().length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'An initial password of at least 6 characters is required to onboard staff.'
+        });
+      }
+
+      const hashedPassword = await hashPassword(String(password));
       const employeeId = generateId('EMP');
 
       const newEmployee = new Employee({

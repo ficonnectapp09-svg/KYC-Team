@@ -4,24 +4,31 @@ import { apiFetch } from '../../services/api';
 import { AuditTrail } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 
 export const AuditLogs: React.FC = () => {
   const [logs, setLogs] = useState<AuditTrail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [moduleFilter, setModuleFilter] = useState('All');
   const [search, setSearch] = useState('');
 
   const loadLogs = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const q = new URLSearchParams();
       if (moduleFilter !== 'All') q.append('module', moduleFilter);
       if (search) q.append('search', search);
 
       const res = await apiFetch<AuditTrail[]>(`/audit-logs?${q.toString()}`);
-      if (res.success) setLogs(res.data || []);
-    } catch (err) {
-      console.error('Failed to load audit logs:', err);
+      if (res.success) {
+        setLogs(res.data || []);
+      } else {
+        setLoadError((res as any).message || 'Failed to load audit logs.');
+      }
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load system audit logs.');
     } finally {
       setLoading(false);
     }
@@ -73,6 +80,8 @@ export const AuditLogs: React.FC = () => {
           Search
         </button>
       </div>
+
+      <ErrorBanner message={loadError} onRetry={loadLogs} />
 
       {/* Table */}
       {loading ? (

@@ -161,6 +161,8 @@ export class AttendanceController {
       record.reviewedBy = {
         userId: currentUser.employeeId,
         name: currentUser.name,
+        role: currentUser.role,
+        department: currentUser.department,
         at: new Date()
       };
       if (remarks) record.remarks = remarks;

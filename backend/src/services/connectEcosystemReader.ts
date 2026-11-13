@@ -39,6 +39,84 @@ export interface EcosystemSummary {
 const BOOKING_TYPES = new Set(['Services', 'Home Services', 'Stay', 'Travel', 'booking']);
 const JOB_TYPES = new Set(['Job', 'Jobs']);
 
+interface SyncedKycDoc {
+  docType: string;
+  docName: string;
+  docUrl: string;
+  version: number;
+  status: 'Pending' | 'Verified' | 'Re-upload Required' | 'Rejected';
+  uploadedAt: Date;
+}
+
+function isRealMediaUrl(raw: unknown): raw is string {
+  if (typeof raw !== 'string') return false;
+  const val = raw.trim();
+  if (!val || val.includes('placehold.co')) return false;
+  return /^(https?:\/\/|data:image\/|data:application\/pdf|\/uploads\/)/i.test(val);
+}
+
+/**
+ * Extract genuine persisted document URLs from Connect App vendor/agent/kyc documents
+ * without ever synthesizing placeholder image URLs.
+ */
+function extractRealDocuments(rawDocs: unknown, fallbackDate: Date): SyncedKycDoc[] {
+  const docs: SyncedKycDoc[] = [];
+
+  if (Array.isArray(rawDocs)) {
+    rawDocs.forEach((item: any, idx: number) => {
+      if (typeof item === 'string' && isRealMediaUrl(item)) {
+        docs.push({
+          docType: `Document ${idx + 1}`,
+          docName: `document_${idx + 1}`,
+          docUrl: item.trim(),
+          version: 1,
+          status: 'Pending',
+          uploadedAt: fallbackDate
+        });
+      } else if (item && typeof item === 'object') {
+        const candidateUrl = item.docUrl || item.url || item.secureUrl || item.secure_url || item.fileUrl;
+        if (isRealMediaUrl(candidateUrl)) {
+          docs.push({
+            docType: String(item.docType || item.type || item.label || `Document ${idx + 1}`),
+            docName: String(item.docName || item.name || item.originalName || `document_${idx + 1}`),
+            docUrl: String(candidateUrl).trim(),
+            version: 1,
+            status: 'Pending',
+            uploadedAt: item.uploadedAt ? new Date(item.uploadedAt) : fallbackDate
+          });
+        }
+      }
+    });
+  } else if (rawDocs && typeof rawDocs === 'object') {
+    for (const [key, val] of Object.entries(rawDocs as Record<string, any>)) {
+      if (isRealMediaUrl(val)) {
+        docs.push({
+          docType: key,
+          docName: key,
+          docUrl: val.trim(),
+          version: 1,
+          status: 'Pending',
+          uploadedAt: fallbackDate
+        });
+      } else if (val && typeof val === 'object') {
+        const candidateUrl = val.docUrl || val.url || val.secureUrl || val.secure_url || val.fileUrl;
+        if (isRealMediaUrl(candidateUrl)) {
+          docs.push({
+            docType: String(val.docType || val.type || key),
+            docName: String(val.docName || val.name || key),
+            docUrl: String(candidateUrl).trim(),
+            version: 1,
+            status: 'Pending',
+            uploadedAt: val.uploadedAt ? new Date(val.uploadedAt) : fallbackDate
+          });
+        }
+      }
+    }
+  }
+
+  return docs;
+}
+
 /**
  * Strictly READ-ONLY bridge into existing `connect_db` production collections.
  * Never mutates, migrates, or deletes any Connect App source-of-truth records.
@@ -194,63 +272,82 @@ export class ConnectEcosystemReader {
       const applicantId = String(v.registrationId || v._id);
       const exists = await KycRequest.exists({ applicantId });
       if (!exists) {
-        const docs = [] as Array<{
-          docType: string;
-          docName: string;
-          docUrl: string;
-          version: number;
-          status: 'Pending' | 'Verified' | 'Re-upload Required' | 'Rejected';
-          uploadedAt: Date;
-        }>;
-        if (v.panNumber) {
-          docs.push({
-            docType: 'PAN Card',
-            docName: `PAN_${maskPan(String(v.panNumber))}.png`,
-            docUrl: String(v.documents?.panCard || 'https://placehold.co/600x400/png?text=Vendor+PAN+Document'),
-            status: 'Pending',
-            version: 1,
-            uploadedAt: v.submittedAt ? new Date(v.submittedAt) : new Date()
+        const uploadedDate = v.submittedAt ? new Date(v.submittedAt) : new Date();
+        const docs = extractRealDocuments(v.documents, uploadedDate);
+
+        // Also inspect top-level URL fields commonly persisted on vendor onboarding records
+        const topLevelDocPairs: Array<[string, unknown]> = [
+          ['PAN Card', v.panUrl],
+          ['Aadhaar Card', v.aadhaarUrl || v.aadharUrl],
+          ['GST Certificate', v.gstUrl],
+          ['Business Registration', v.registrationDocUrl]
+        ];
+        for (const [label, maybeUrl] of topLevelDocPairs) {
+          if (isRealMediaUrl(maybeUrl) && !docs.some((d) => d.docUrl === maybeUrl.trim())) {
+            docs.push({
+              docType: label,
+              docName: label.replace(/\s+/g, '_'),
+              docUrl: maybeUrl.trim(),
+              version: 1,
+              status: 'Pending',
+              uploadedAt: uploadedDate
+            });
+          }
+        }
+
+        const approvalHistory: any[] = [];
+        let approvedBy: any = null;
+        let rejectedBy: any = null;
+
+        if (Array.isArray(v.reviewHistory)) {
+          v.reviewHistory.forEach((r: any) => {
+            approvalHistory.push({
+              action: r.action || 'REVIEW',
+              status: r.status || (r.action === 'APPROVED' ? 'Approved' : 'Pending'),
+              actorId: r.reviewedById || 'ECOSYSTEM',
+              actorName: r.reviewedBy || 'Ecosystem Official',
+              actorRole: r.reviewerRole || 'Reviewer',
+              actorDepartment: 'Operations',
+              timestamp: r.timestamp ? new Date(r.timestamp) : uploadedDate,
+              remarks: r.reason || r.remarks || ''
+            });
           });
         }
-        if (v.aadhaarNumber) {
-          docs.push({
-            docType: 'Aadhaar Card',
-            docName: `Aadhaar_${maskAadhaar(String(v.aadhaarNumber))}.png`,
-            docUrl: String(v.documents?.aadhaar || 'https://placehold.co/600x400/png?text=Vendor+Aadhaar+Document'),
-            status: 'Pending',
-            version: 1,
-            uploadedAt: v.submittedAt ? new Date(v.submittedAt) : new Date()
-          });
-        }
-        if (docs.length === 0) {
-          docs.push({
-            docType: 'Business Registration Proof',
-            docName: 'Vendor_Registration.png',
-            docUrl: 'https://placehold.co/600x400/png?text=Vendor+Registration+Doc',
-            status: 'Pending',
-            version: 1,
-            uploadedAt: v.submittedAt ? new Date(v.submittedAt) : new Date()
-          });
+
+        if (v.approvedByName) {
+          approvedBy = {
+            employeeId: v.approvedById || 'ECOSYSTEM',
+            name: v.approvedByName,
+            role: v.approvedByRole || 'Admin',
+            department: 'Operations',
+            at: v.approvedAt ? new Date(v.approvedAt) : uploadedDate,
+            remarks: v.reviewerReason || 'Approved via Ecosystem Workflow'
+          };
         }
 
         await KycRequest.create({
           requestId: generateId('KYC-ECO'),
           applicantId,
-          applicantName: String(v.ownerName || v.businessName || v.name || 'Connect Vendor'),
+          applicantName: String(v.ownerName || v.businessName || v.name || applicantId),
           applicantType: ApplicantType.VENDOR,
-          phone: String(v.phone || '0000000000'),
-          email: String(v.email || 'vendor@connectapp.in'),
+          phone: typeof v.phone === 'string' ? v.phone.trim() : '',
+          email: typeof v.email === 'string' ? v.email.trim().toLowerCase() : '',
           applicantDetails: {
             businessName: String(v.businessName || v.storeType || ''),
             gst: v.gst || '',
+            panNumberMasked: v.panNumber ? maskPan(String(v.panNumber)) : '',
+            aadhaarNumberMasked: v.aadhaarNumber ? maskAadhaar(String(v.aadhaarNumber)) : '',
             pincode: v.pincode || '',
             sourceCollection: 'vendors'
           },
           registrationDate: v.createdAt ? new Date(v.createdAt) : new Date(),
-          submissionDate: v.submittedAt ? new Date(v.submittedAt) : new Date(),
+          submissionDate: uploadedDate,
           priority: 'High',
           status: KycStatus.UNASSIGNED,
-          documents: docs
+          documents: docs,
+          approvedBy,
+          rejectedBy,
+          approvalHistory
         });
         importedCount += 1;
       }
@@ -260,50 +357,78 @@ export class ConnectEcosystemReader {
       const applicantId = String(a.registrationId || a._id);
       const exists = await KycRequest.exists({ applicantId });
       if (!exists) {
-        const docs = [] as Array<{
-          docType: string;
-          docName: string;
-          docUrl: string;
-          version: number;
-          status: 'Pending' | 'Verified' | 'Re-upload Required' | 'Rejected';
-          uploadedAt: Date;
-        }>;
-        if (a.aadhaarNumber || a.panNumber) {
-          docs.push({
-            docType: a.panNumber ? 'Agent PAN' : 'Agent Aadhaar',
-            docName: a.panNumber ? `PAN_${maskPan(String(a.panNumber))}.png` : `Aadhaar_${maskAadhaar(String(a.aadhaarNumber))}.png`,
-            docUrl: 'https://placehold.co/600x400/png?text=Agent+Identity+Doc',
-            status: 'Pending',
-            version: 1,
-            uploadedAt: a.createdAt ? new Date(a.createdAt) : new Date()
+        const uploadedDate = a.createdAt ? new Date(a.createdAt) : new Date();
+        const docs = extractRealDocuments(a.documents, uploadedDate);
+
+        const topLevelDocPairs: Array<[string, unknown]> = [
+          ['Agent PAN', a.panUrl],
+          ['Agent Aadhaar', a.aadhaarUrl || a.aadharUrl],
+          ['Agent Photo', a.photoUrl]
+        ];
+        for (const [label, maybeUrl] of topLevelDocPairs) {
+          if (isRealMediaUrl(maybeUrl) && !docs.some((d) => d.docUrl === maybeUrl.trim())) {
+            docs.push({
+              docType: label,
+              docName: label.replace(/\s+/g, '_'),
+              docUrl: maybeUrl.trim(),
+              version: 1,
+              status: 'Pending',
+              uploadedAt: uploadedDate
+            });
+          }
+        }
+
+        const approvalHistory: any[] = [];
+        let approvedBy: any = null;
+        let rejectedBy: any = null;
+
+        if (Array.isArray(a.reviewHistory)) {
+          a.reviewHistory.forEach((r: any) => {
+            approvalHistory.push({
+              action: r.action || 'REVIEW',
+              status: r.status || (r.action === 'APPROVED' ? 'Approved' : 'Pending'),
+              actorId: r.reviewerId || 'ECOSYSTEM',
+              actorName: r.reviewerName || 'Ecosystem Official',
+              actorRole: r.reviewerRole || 'Reviewer',
+              actorDepartment: 'Operations',
+              timestamp: r.timestamp || r.reviewedAt ? new Date(r.timestamp || r.reviewedAt) : uploadedDate,
+              remarks: r.remarks || r.reason || ''
+            });
           });
-        } else {
-          docs.push({
-            docType: 'Agent Identity Proof',
-            docName: 'Agent_Identity.png',
-            docUrl: 'https://placehold.co/600x400/png?text=Agent+KYC+Doc',
-            status: 'Pending',
-            version: 1,
-            uploadedAt: a.createdAt ? new Date(a.createdAt) : new Date()
-          });
+        }
+
+        if (a.adminApprovedBy) {
+          approvedBy = {
+            employeeId: a.adminApprovedById || 'ECOSYSTEM',
+            name: a.adminApprovedBy,
+            role: a.adminApprovedByRole || 'Admin',
+            department: 'Operations',
+            at: a.adminApprovedAt ? new Date(a.adminApprovedAt) : uploadedDate,
+            remarks: a.adminNotes || 'Approved via Ecosystem Workflow'
+          };
         }
 
         await KycRequest.create({
           requestId: generateId('KYC-ECO'),
           applicantId,
-          applicantName: String(a.name || 'Connect Agent'),
+          applicantName: String(a.name || applicantId),
           applicantType: ApplicantType.AGENT,
-          phone: String(a.phone || a.mobile || '0000000000'),
-          email: String(a.email || 'agent@connectapp.in'),
+          phone: typeof (a.phone || a.mobile) === 'string' ? String(a.phone || a.mobile).trim() : '',
+          email: typeof a.email === 'string' ? a.email.trim().toLowerCase() : '',
           applicantDetails: {
-            territory: String(a.territory || a.assignedTerritory || 'Field Agent'),
+            territory: String(a.territory || a.assignedTerritory || ''),
+            panNumberMasked: a.panNumber ? maskPan(String(a.panNumber)) : '',
+            aadhaarNumberMasked: a.aadhaarNumber ? maskAadhaar(String(a.aadhaarNumber)) : '',
             sourceCollection: 'agents'
           },
           registrationDate: a.createdAt ? new Date(a.createdAt) : new Date(),
-          submissionDate: a.createdAt ? new Date(a.createdAt) : new Date(),
+          submissionDate: uploadedDate,
           priority: 'High',
           status: KycStatus.UNASSIGNED,
-          documents: docs
+          documents: docs,
+          approvedBy,
+          rejectedBy,
+          approvalHistory
         });
         importedCount += 1;
       }

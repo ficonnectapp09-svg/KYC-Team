@@ -35,6 +35,35 @@ export interface IReuploadRequest {
   isResolved: boolean;
 }
 
+export interface IKycApproverInfo {
+  employeeId: string;
+  name: string;
+  role: string;
+  department: string;
+  at: Date;
+  remarks?: string;
+}
+
+export interface IKycRejectorInfo {
+  employeeId: string;
+  name: string;
+  role: string;
+  department: string;
+  at: Date;
+  reason?: string;
+}
+
+export interface IKycApprovalEvent {
+  action: string;
+  status: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  actorDepartment?: string;
+  timestamp: Date;
+  remarks?: string;
+}
+
 export interface IKycRequest extends Document {
   requestId: string;
   applicantId: string;
@@ -57,6 +86,9 @@ export interface IKycRequest extends Document {
   verificationRemarks?: string;
   reviewedBy?: string;
   reviewedAt?: Date;
+  approvedBy?: IKycApproverInfo | null;
+  rejectedBy?: IKycRejectorInfo | null;
+  approvalHistory: IKycApprovalEvent[];
   routedToPayment: boolean;
   paymentTaskId?: string;
   createdAt: Date;
@@ -111,8 +143,8 @@ const KycRequestSchema = new Schema<IKycRequest>({
     required: true,
     index: true
   },
-  phone: { type: String, required: true, trim: true },
-  email: { type: String, required: true, lowercase: true, trim: true },
+  phone: { type: String, default: '', trim: true },
+  email: { type: String, default: '', lowercase: true, trim: true },
   priority: { type: String, enum: ['Low', 'Medium', 'High', 'Urgent'], default: 'Medium', index: true },
   status: {
     type: String,
@@ -133,6 +165,40 @@ const KycRequestSchema = new Schema<IKycRequest>({
   verificationRemarks: { type: String, default: '' },
   reviewedBy: { type: String, default: '' },
   reviewedAt: { type: Date },
+  approvedBy: {
+    type: {
+      employeeId: { type: String },
+      name: { type: String },
+      role: { type: String },
+      department: { type: String },
+      at: { type: Date },
+      remarks: { type: String }
+    },
+    default: null
+  },
+  rejectedBy: {
+    type: {
+      employeeId: { type: String },
+      name: { type: String },
+      role: { type: String },
+      department: { type: String },
+      at: { type: Date },
+      reason: { type: String }
+    },
+    default: null
+  },
+  approvalHistory: [
+    new Schema({
+      action: { type: String, required: true },
+      status: { type: String, required: true },
+      actorId: { type: String, required: true },
+      actorName: { type: String, required: true },
+      actorRole: { type: String, required: true },
+      actorDepartment: { type: String, default: '' },
+      timestamp: { type: Date, default: Date.now },
+      remarks: { type: String, default: '' }
+    }, { _id: false })
+  ],
   routedToPayment: { type: Boolean, default: false, index: true },
   paymentTaskId: { type: String, default: null }
 }, {

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { apiFetch } from '../../services/api';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
@@ -27,27 +28,46 @@ export const OverallDashboard: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [ecosystem, setEcosystem] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [ecosystemError, setEcosystemError] = useState<string | null>(null);
+
+  const fetchDashboard = async () => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+      setEcosystemError(null);
+      const [overallRes, ecoRes] = await Promise.allSettled([
+        apiFetch('/reports/overall'),
+        apiFetch('/reports/ecosystem')
+      ]);
+
+      if (overallRes.status === 'fulfilled' && overallRes.value.success && overallRes.value.data) {
+        setData(overallRes.value.data);
+      } else {
+        const msg =
+          overallRes.status === 'rejected'
+            ? overallRes.reason?.message
+            : overallRes.value?.message;
+        setLoadError(msg || 'Failed to load overall dashboard telemetry from backend.');
+      }
+
+      if (ecoRes.status === 'fulfilled' && ecoRes.value.success && ecoRes.value.data) {
+        setEcosystem(ecoRes.value.data);
+      } else {
+        const msg =
+          ecoRes.status === 'rejected'
+            ? ecoRes.reason?.message
+            : ecoRes.value?.message;
+        setEcosystemError(msg || 'Connect App live ecosystem telemetry failed to load.');
+      }
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load dashboard telemetry.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const [overallRes, ecoRes] = await Promise.all([
-          apiFetch('/reports/overall'),
-          apiFetch('/reports/ecosystem').catch(() => ({ success: false, data: null }))
-        ]);
-        if (overallRes.success && overallRes.data) {
-          setData(overallRes.data);
-        }
-        if (ecoRes.success && ecoRes.data) {
-          setEcosystem(ecoRes.data);
-        }
-      } catch (err) {
-        console.error('Failed to load overall dashboard:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboard();
   }, []);
 
@@ -55,6 +75,14 @@ export const OverallDashboard: React.FC = () => {
     return (
       <div className="flex h-96 items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
+      </div>
+    );
+  }
+
+  if (loadError && !data) {
+    return (
+      <div className="space-y-4">
+        <ErrorBanner message={loadError} onRetry={fetchDashboard} />
       </div>
     );
   }
@@ -131,7 +159,7 @@ export const OverallDashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Total Departments"
-          value={staff.totalDepartments || 3}
+          value={staff.totalDepartments ?? 0}
           subtitle="KYC, Payment & Queries"
           icon={Building2}
           variant="indigo"
@@ -312,7 +340,9 @@ export const OverallDashboard: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-xs text-slate-400 p-4">Connect App live collection summary unavailable.</div>
+            <div className="text-xs text-rose-500 p-4 font-semibold">
+              {ecosystemError || 'Connect App live collection summary failed to load.'}
+            </div>
           )}
         </div>
       </div>

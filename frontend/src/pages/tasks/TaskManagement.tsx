@@ -6,12 +6,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 
 export const TaskManagement: React.FC = () => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [staff, setStaff] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [form, setForm] = useState({
@@ -26,15 +28,20 @@ export const TaskManagement: React.FC = () => {
   const loadTasks = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const res = await apiFetch<TaskItem[]>('/tasks');
-      if (res.success) setTasks(res.data || []);
+      if (res.success) {
+        setTasks(res.data || []);
+      } else {
+        setLoadError((res as any).message || 'Failed to load tasks.');
+      }
 
       if (user?.role.includes('lead')) {
         const sRes = await apiFetch<Employee[]>('/staff');
         if (sRes.success) setStaff((sRes.data || []).filter(s => s.status === 'active'));
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load operational tasks.');
     } finally {
       setLoading(false);
     }
@@ -99,6 +106,8 @@ export const TaskManagement: React.FC = () => {
           </button>
         )}
       </div>
+
+      <ErrorBanner message={loadError} onRetry={loadTasks} />
 
       {loading ? (
         <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>

@@ -22,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { DepartmentTabHeader, PaginationBar, TabSummaryCounts } from '../../components/common/DepartmentTabHeader';
 import { QUERY_NAV_CATEGORIES } from '../../config/categoryCatalog';
 
@@ -64,6 +65,7 @@ export const QueriesManagement: React.FC = () => {
   const [transferDest, setTransferDest] = useState('Payment Team');
   const [transferReason, setTransferReason] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState({
     userType: 'Customer',
@@ -78,6 +80,7 @@ export const QueriesManagement: React.FC = () => {
   const loadQueries = async (targetPage = page) => {
     try {
       setLoading(true);
+      setLoadError(null);
       const q = new URLSearchParams();
       q.append('sourceCategory', activeCategory.key);
       q.append('page', String(targetPage));
@@ -99,6 +102,8 @@ export const QueriesManagement: React.FC = () => {
         setCategoryCounts((res as any).categoryCounts || {});
         setTotal((res as any).total ?? res.data.length);
         setTotalPages((res as any).totalPages ?? 1);
+      } else {
+        setLoadError((res as any).message || 'Failed to load queries.');
       }
       if (kpiRes.success && kpiRes.data) {
         setKpis(kpiRes.data);
@@ -108,8 +113,8 @@ export const QueriesManagement: React.FC = () => {
         const sRes = await apiFetch<Employee[]>('/staff');
         if (sRes.success) setDeptStaff((sRes.data || []).filter(s => s.status === 'active'));
       }
-    } catch (err) {
-      console.error('Failed to load queries:', err);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load support queries.');
     } finally {
       setLoading(false);
     }
@@ -402,6 +407,8 @@ export const QueriesManagement: React.FC = () => {
         onResetFilters={resetFilters}
       />
 
+      <ErrorBanner message={loadError} onRetry={() => loadQueries(page)} />
+
       {feedback && (
         <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200">
           <span className="font-semibold">{feedback}</span>
@@ -585,6 +592,44 @@ export const QueriesManagement: React.FC = () => {
                   >
                     Assign
                   </button>
+                </div>
+              )}
+
+              {selectedQuery.status === 'Resolved' && selectedQuery.resolution && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1">
+                  <div className="font-bold flex items-center justify-between text-emerald-800 dark:text-emerald-300">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Official Query Resolution Attribution
+                    </span>
+                    <Badge variant="success">Resolved</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold">Resolved By Specialist</span>
+                      <div className="font-bold text-slate-900 dark:text-white">{selectedQuery.resolution.resolvedByName}</div>
+                      {selectedQuery.resolution.resolvedByUserId && (
+                        <div className="text-[10px] font-mono text-slate-400">{selectedQuery.resolution.resolvedByUserId}</div>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold">Role & Department</span>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 capitalize">
+                        {selectedQuery.resolution.resolvedByRole ? selectedQuery.resolution.resolvedByRole.replace(/_/g, ' ') : 'Support Specialist'}
+                      </div>
+                      <div className="text-[10px] text-slate-400">{selectedQuery.resolution.resolvedByDepartment || 'Queries Team'}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold">Resolution Timestamp</span>
+                      <div className="font-medium text-slate-700 dark:text-slate-300">
+                        {new Date(selectedQuery.resolution.resolvedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="col-span-2 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                      <span className="text-[10px] text-slate-500 uppercase font-semibold">Resolution Notes</span>
+                      <div className="font-medium text-slate-800 dark:text-slate-200">{selectedQuery.resolution.resolutionNotes}</div>
+                    </div>
+                  </div>
                 </div>
               )}
 

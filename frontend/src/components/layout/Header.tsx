@@ -6,10 +6,7 @@ import {
   Moon,
   Bell,
   LogOut,
-  UserCheck,
-  ChevronDown,
   ShieldAlert,
-  CheckCircle2,
   Search
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -78,7 +75,7 @@ function resolveDynamicTitle(pathname: string): string {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
-  const { user, logout, switchRoleDemo } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -86,8 +83,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [showNotifMenu, setShowNotifMenu] = useState<boolean>(false);
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<{
     employees: any[];
     kyc: any[];
@@ -102,16 +99,22 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     const trimmed = searchQuery.trim();
     if (trimmed.length < 2) {
       setSearchResults(null);
+      setSearchError(null);
       return;
     }
     const timer = setTimeout(async () => {
       try {
+        setSearchError(null);
         const res = await apiFetch<any>(`/reports/search?q=${encodeURIComponent(trimmed)}`);
         if (res.success && res.data) {
           setSearchResults(res.data);
+        } else {
+          setSearchResults(null);
+          setSearchError(res.message || 'Search failed.');
         }
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        setSearchResults(null);
+        setSearchError(err?.message || 'Unable to search records.');
       }
     }, 280);
     return () => clearTimeout(timer);
@@ -145,16 +148,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     }
   };
 
-  const demoAccounts = [
-    { label: 'Overall Team Lead', email: 'lead@connectapp.in', role: 'Overall Lead' },
-    { label: 'KYC Team Lead', email: 'kyc.lead@connectapp.in', role: 'KYC Lead' },
-    { label: 'Payment Team Lead', email: 'payment.lead@connectapp.in', role: 'Payment Lead' },
-    { label: 'Queries Team Lead', email: 'queries.lead@connectapp.in', role: 'Queries Lead' },
-    { label: 'KYC Verification Staff', email: 'kyc.staff@connectapp.in', role: 'KYC Staff' },
-    { label: 'Payment Maker Staff', email: 'payment.staff@connectapp.in', role: 'Payment Staff' },
-    { label: 'Queries Support Staff', email: 'queries.staff@connectapp.in', role: 'Queries Staff' }
-  ];
-
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-4 sm:px-6 backdrop-blur-md">
       {/* Left: Mobile Toggle, Breadcrumb Title & Global Search */}
@@ -184,6 +177,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             placeholder="Global search (KYC, TXN, QRY, Staff)..."
             className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/70 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
+          {searchError && (
+            <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border border-rose-200 dark:border-rose-800 shadow-2xl p-3 z-50 text-xs text-rose-700 dark:text-rose-200 font-semibold">
+              {searchError}
+            </div>
+          )}
           {searchResults && (
             <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 max-h-80 overflow-y-auto text-xs space-y-2">
               {Object.values(searchResults).every((arr) => arr.length === 0) ? (
@@ -249,49 +247,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       {/* Right Actions */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Quick Demo Role Switcher */}
-        <div className="relative">
-          <button
-            onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-100 transition-colors"
-            title="Switch demo persona to test role permissions"
-          >
-            <UserCheck className="w-4 h-4" />
-            <span className="hidden md:inline">Switch Role</span>
-            <ChevronDown className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          {showRoleSwitcher && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-2 z-50">
-              <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800 mb-1">
-                Role Testing Personas
-              </div>
-              {demoAccounts.map(account => (
-                <button
-                  key={account.email}
-                  onClick={async () => {
-                    await switchRoleDemo(account.email);
-                    setShowRoleSwitcher(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2 text-left text-xs transition-colors ${
-                    user?.email === account.email
-                      ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 font-semibold'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div>
-                    <div className="font-medium">{account.label}</div>
-                    <div className="text-[10px] text-slate-400">{account.email}</div>
-                  </div>
-                  {user?.email === account.email && (
-                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Notifications */}
         <div className="relative">
           <button

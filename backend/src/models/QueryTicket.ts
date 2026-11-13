@@ -53,6 +53,8 @@ export interface IQueryTicket extends Document {
   resolution?: {
     resolvedByUserId: string;
     resolvedByName: string;
+    resolvedByRole?: string;
+    resolvedByDepartment?: string;
     resolvedAt: Date;
     resolutionNotes: string;
   };
@@ -130,6 +132,8 @@ const QueryTicketSchema = new Schema<IQueryTicket>({
   resolution: {
     resolvedByUserId: { type: String },
     resolvedByName: { type: String },
+    resolvedByRole: { type: String, default: '' },
+    resolvedByDepartment: { type: String, default: '' },
     resolvedAt: { type: Date },
     resolutionNotes: { type: String }
   },

@@ -5,9 +5,8 @@ import { apiFetch, setAuthToken, removeAuthToken, getAuthToken } from '../servic
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  switchRoleDemo: (email: string) => Promise<void>;
   hasRole: (roles: string[]) => boolean;
   hasDepartment: (depts: string[]) => boolean;
 }
@@ -47,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string = 'Connect@2026') => {
+  const login = async (email: string, password: string) => {
     const res = await apiFetch<{ accessToken: string; user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
@@ -58,10 +57,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.data.user);
       localStorage.setItem('connect_backoffice_user', JSON.stringify(res.data.user));
     }
-  };
-
-  const switchRoleDemo = async (email: string) => {
-    await login(email, 'Connect@2026');
   };
 
   const logout = () => {
@@ -88,7 +83,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         logout,
-        switchRoleDemo,
         hasRole,
         hasDepartment
       }}

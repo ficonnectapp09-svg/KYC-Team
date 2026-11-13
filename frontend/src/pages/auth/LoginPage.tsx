@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Lock, Mail, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Building2, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const LoginPage: React.FC = () => {
@@ -8,7 +8,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('Connect@2026');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,16 +26,6 @@ export const LoginPage: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const quickLogins = [
-    { label: 'Overall Team Lead', email: 'lead@connectapp.in', role: 'Full System Oversight' },
-    { label: 'KYC Team Lead', email: 'kyc.lead@connectapp.in', role: 'KYC Operations' },
-    { label: 'Payment Team Lead', email: 'payment.lead@connectapp.in', role: 'Financial Checker' },
-    { label: 'Queries Team Lead', email: 'queries.lead@connectapp.in', role: 'Support Operations' },
-    { label: 'KYC Staff Officer', email: 'kyc.staff@connectapp.in', role: 'Document Verifier' },
-    { label: 'Payment Staff Officer', email: 'payment.staff@connectapp.in', role: 'Financial Maker' },
-    { label: 'Queries Support Staff', email: 'queries.staff@connectapp.in', role: 'Case Handler' }
-  ];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 sm:p-6 lg:p-8">
@@ -112,40 +102,6 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Role Picker */}
-          <div className="pt-4 border-t border-slate-800">
-            <div className="flex items-center gap-2 mb-3">
-              <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Quick 1-Click Role Login
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {quickLogins.map(loginItem => (
-                <button
-                  key={loginItem.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(loginItem.email);
-                    setPassword('Connect@2026');
-                  }}
-                  className="p-2.5 rounded-xl border border-slate-800 bg-slate-800/60 hover:bg-indigo-950/40 hover:border-indigo-800 text-left transition-all"
-                >
-                  <div className="text-xs font-bold text-white">
-                    {loginItem.label}
-                  </div>
-                  <div className="text-[10px] text-slate-400">
-                    {loginItem.email}
-                  </div>
-                  <div className="text-[9px] font-semibold text-indigo-400 mt-0.5">
-                    {loginItem.role}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>

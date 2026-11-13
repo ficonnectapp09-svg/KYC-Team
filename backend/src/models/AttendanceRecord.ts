@@ -20,6 +20,8 @@ export interface IAttendanceRecord extends Document {
   reviewedBy?: {
     userId: string;
     name: string;
+    role?: string;
+    department?: string;
     at: Date;
   } | null;
   remarks?: string;
@@ -55,6 +57,8 @@ const AttendanceRecordSchema = new Schema<IAttendanceRecord>({
     type: {
       userId: { type: String },
       name: { type: String },
+      role: { type: String },
+      department: { type: String },
       at: { type: Date }
     },
     default: null

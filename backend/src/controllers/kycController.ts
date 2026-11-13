@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { KycRequest } from '../models/KycRequest';
 import { Employee } from '../models/Employee';
 import { NotificationItem } from '../models/NotificationItem';
-import { Department, KycStatus, Role } from '../config/constants';
+import { ApplicantType, Department, KycStatus, Role } from '../config/constants';
 import { KYC_CATEGORIES, resolveKycCategory } from '../config/categoryCatalog';
 import { KycAssignmentService } from '../services/kycAssignmentService';
 import { KycToPaymentRouter } from '../services/kycToPaymentRouter';
@@ -281,6 +282,132 @@ export class KycController {
   }
 
   /**
+   * Helper to synchronize verified approval or rejection back to live ecosystem vendors/agents
+   */
+  private static async syncToEcosystem(kycRequest: any, action: 'APPROVED' | 'REJECTED', currentUser: any, remarks?: string) {
+    try {
+      const db = mongoose.connection.db;
+      if (!db) return;
+
+      const applicantId = String(kycRequest.applicantId || '');
+      const isVendor = kycRequest.applicantType === ApplicantType.VENDOR;
+      const isAgent = kycRequest.applicantType === ApplicantType.AGENT;
+
+      if (!isVendor && !isAgent) return;
+
+      const idQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }];
+      if (mongoose.Types.ObjectId.isValid(applicantId)) {
+        idQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+      }
+
+      if (isVendor) {
+        if (action === 'APPROVED') {
+          await db.collection('vendors').updateOne(
+            { $or: idQueries },
+            {
+              $set: {
+                kycStatus: 'Approved',
+                isApproved: true,
+                approvedAt: new Date(),
+                approvedById: currentUser.employeeId,
+                approvedByName: currentUser.name,
+                approvedByRole: currentUser.role,
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'APPROVED',
+                  reason: remarks || 'KYC verified and approved in Backoffice',
+                  reviewedBy: currentUser.name,
+                  reviewedById: currentUser.employeeId,
+                  reviewerRole: currentUser.role,
+                  timestamp: new Date()
+                }
+              } as any
+            }
+          );
+        } else if (action === 'REJECTED') {
+          await db.collection('vendors').updateOne(
+            { $or: idQueries },
+            {
+              $set: {
+                kycStatus: 'Rejected',
+                rejectionReason: remarks || 'Rejected in Backoffice',
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'REJECTED',
+                  reason: remarks || 'Rejected in Backoffice',
+                  reviewedBy: currentUser.name,
+                  reviewedById: currentUser.employeeId,
+                  reviewerRole: currentUser.role,
+                  timestamp: new Date()
+                }
+              } as any
+            }
+          );
+        }
+      } else if (isAgent) {
+        if (action === 'APPROVED') {
+          await db.collection('agents').updateOne(
+            { $or: idQueries },
+            {
+              $set: {
+                kycStatus: 'Approved',
+                isApproved: true,
+                adminApprovalStatus: 'approved',
+                adminApprovedAt: new Date(),
+                adminApprovedById: currentUser.employeeId,
+                adminApprovedBy: currentUser.name,
+                adminApprovedByRole: currentUser.role,
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'APPROVED',
+                  status: 'Active',
+                  reviewerId: currentUser.employeeId,
+                  reviewerName: currentUser.name,
+                  reviewerRole: currentUser.role,
+                  reviewedAt: new Date(),
+                  timestamp: new Date(),
+                  remarks: remarks || 'KYC verified and approved in Backoffice'
+                }
+              } as any
+            }
+          );
+        } else if (action === 'REJECTED') {
+          await db.collection('agents').updateOne(
+            { $or: idQueries },
+            {
+              $set: {
+                kycStatus: 'Rejected',
+                rejectionReason: remarks || 'Rejected in Backoffice',
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'REJECTED',
+                  status: 'Rejected',
+                  reviewerId: currentUser.employeeId,
+                  reviewerName: currentUser.name,
+                  reviewerRole: currentUser.role,
+                  reviewedAt: new Date(),
+                  timestamp: new Date(),
+                  remarks: remarks || 'Rejected in Backoffice'
+                }
+              } as any
+            }
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn('[KYC Ecosystem Sync]: Non-fatal sync notice:', e.message);
+    }
+  }
+
+  /**
    * KYC Verification Action: Approve, Reject, Request Re-upload, or Escalate
    */
   static async verifyKycAction(req: Request, res: Response): Promise<any> {
@@ -294,10 +421,30 @@ export class KycController {
       }
 
       if (action === 'APPROVE') {
+        const approvalRemarks = remarks || 'All documents verified and approved.';
         kycRequest.status = KycStatus.APPROVED;
-        kycRequest.verificationRemarks = remarks || 'All documents verified and approved.';
+        kycRequest.verificationRemarks = approvalRemarks;
         kycRequest.reviewedBy = currentUser.name;
         kycRequest.reviewedAt = new Date();
+        kycRequest.approvedBy = {
+          employeeId: currentUser.employeeId,
+          name: currentUser.name,
+          role: currentUser.role,
+          department: currentUser.department,
+          at: new Date(),
+          remarks: approvalRemarks
+        };
+        kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+        kycRequest.approvalHistory.push({
+          action: 'APPROVED',
+          status: 'Approved',
+          actorId: currentUser.employeeId,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
+          timestamp: new Date(),
+          remarks: approvalRemarks
+        });
         kycRequest.lastUpdated = new Date();
 
         // Mark all documents verified
@@ -306,6 +453,9 @@ export class KycController {
           doc.verifiedBy = currentUser.name;
           doc.verifiedAt = new Date();
         });
+
+        // Sync to live vendors / agents collections
+        await KycController.syncToEcosystem(kycRequest, 'APPROVED', currentUser, approvalRemarks);
 
         // Trigger Critical KYC-to-Payment Routing
         const routingResult = await KycToPaymentRouter.handleKycApprovalRouting(
@@ -318,7 +468,7 @@ export class KycController {
           'KYC_APPROVED',
           'KYC',
           kycRequest.requestId,
-          `KYC Approved by ${currentUser.name}. ${routingResult.message}`
+          `KYC Approved by ${currentUser.name} (${currentUser.employeeId}, ${currentUser.role}, ${currentUser.department}). ${routingResult.message}`
         );
 
         return res.json({
@@ -340,16 +490,38 @@ export class KycController {
         kycRequest.verificationRemarks = reason;
         kycRequest.reviewedBy = currentUser.name;
         kycRequest.reviewedAt = new Date();
+        kycRequest.rejectedBy = {
+          employeeId: currentUser.employeeId,
+          name: currentUser.name,
+          role: currentUser.role,
+          department: currentUser.department,
+          at: new Date(),
+          reason: reason
+        };
+        kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+        kycRequest.approvalHistory.push({
+          action: 'REJECTED',
+          status: 'Rejected',
+          actorId: currentUser.employeeId,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
+          timestamp: new Date(),
+          remarks: reason
+        });
         kycRequest.lastUpdated = new Date();
 
         await kycRequest.save();
+
+        // Sync to live vendors / agents collections
+        await KycController.syncToEcosystem(kycRequest, 'REJECTED', currentUser, reason);
 
         await logAudit(
           req,
           'KYC_REJECTED',
           'KYC',
           kycRequest.requestId,
-          `KYC Rejected by ${currentUser.name}. Reason: ${reason}`
+          `KYC Rejected by ${currentUser.name} (${currentUser.employeeId}, ${currentUser.role}, ${currentUser.department}). Reason: ${reason}`
         );
 
         return res.json({
@@ -392,6 +564,17 @@ export class KycController {
           requestedAt: new Date(),
           isResolved: false
         });
+        kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+        kycRequest.approvalHistory.push({
+          action: 'RE_UPLOAD_REQUESTED',
+          status: 'Re-upload Requested',
+          actorId: currentUser.employeeId,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
+          timestamp: new Date(),
+          remarks: `Re-upload requested for ${documentType}: ${reason}`
+        });
         kycRequest.lastUpdated = new Date();
 
         await kycRequest.save();
@@ -414,7 +597,19 @@ export class KycController {
       if (action === 'ESCALATE') {
         kycRequest.priority = 'Urgent';
         kycRequest.status = KycStatus.IN_PROGRESS;
-        kycRequest.verificationRemarks = `ESCALATED by ${currentUser.name}: ${reason || remarks || 'Requires Team Lead review'}`;
+        const escRemarks = `ESCALATED by ${currentUser.name}: ${reason || remarks || 'Requires Team Lead review'}`;
+        kycRequest.verificationRemarks = escRemarks;
+        kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+        kycRequest.approvalHistory.push({
+          action: 'ESCALATED',
+          status: kycRequest.status,
+          actorId: currentUser.employeeId,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
+          timestamp: new Date(),
+          remarks: escRemarks
+        });
         kycRequest.lastUpdated = new Date();
         await kycRequest.save();
 
@@ -507,6 +702,17 @@ export class KycController {
       });
 
       kycRequest.status = kycRequest.assignedEmployeeId ? KycStatus.ASSIGNED : KycStatus.UNASSIGNED;
+      kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+      kycRequest.approvalHistory.push({
+        action: 'DOCUMENT_RESUBMITTED',
+        status: kycRequest.status,
+        actorId: currentUser.employeeId,
+        actorName: currentUser.name,
+        actorRole: currentUser.role,
+        actorDepartment: currentUser.department,
+        timestamp: new Date(),
+        remarks: `Resubmitted ${docType} (v${targetDoc.version}). Prior version preserved.`
+      });
       kycRequest.lastUpdated = new Date();
       await kycRequest.save();
 

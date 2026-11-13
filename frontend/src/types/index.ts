@@ -93,6 +93,32 @@ export interface KycRequest {
   verificationRemarks?: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  approvedBy?: {
+    employeeId: string;
+    name: string;
+    role: string;
+    department: string;
+    at: string;
+    remarks?: string;
+  } | null;
+  rejectedBy?: {
+    employeeId: string;
+    name: string;
+    role: string;
+    department: string;
+    at: string;
+    reason?: string;
+  } | null;
+  approvalHistory?: {
+    action: string;
+    status: string;
+    actorId: string;
+    actorName: string;
+    actorRole: string;
+    actorDepartment?: string;
+    timestamp: string;
+    remarks?: string;
+  }[];
   routedToPayment: boolean;
   paymentTaskId?: string;
 }
@@ -169,11 +195,14 @@ export interface FinancialApproval {
   makerId: string;
   makerName: string;
   makerRole: string;
+  makerDepartment?: string;
   makerNotes?: string;
   initiatedAt: string;
   status: 'Draft' | 'Submitted for Approval' | 'Pending Checker Review' | 'Approved' | 'Rejected' | 'Processing' | 'Completed' | 'Cancelled';
   checkerId?: string;
   checkerName?: string;
+  checkerRole?: string;
+  checkerDepartment?: string;
   reviewedAt?: string;
   rejectionReason?: string;
   idempotencyKey: string;
@@ -222,7 +251,10 @@ export interface QueryTicket {
     transferredAt: string;
   }[];
   resolution?: {
+    resolvedByUserId?: string;
     resolvedByName: string;
+    resolvedByRole?: string;
+    resolvedByDepartment?: string;
     resolvedAt: string;
     resolutionNotes: string;
   };
@@ -266,6 +298,7 @@ export interface SalaryRecord {
   };
   status: 'Draft' | 'Prepared' | 'Submitted for Overall Approval' | 'Approved' | 'Rejected' | 'Processing' | 'Paid';
   preparedBy: {
+    userId?: string;
     name: string;
     role: string;
     at: string;
@@ -278,6 +311,7 @@ export interface SalaryRecord {
     notes?: string;
   };
   approvedByOverallLead?: {
+    userId?: string;
     name: string;
     at: string;
     notes?: string;

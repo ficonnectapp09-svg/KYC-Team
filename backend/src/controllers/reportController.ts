@@ -21,22 +21,24 @@ export class ReportController {
       const querySlaCutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
 
       // 1. Staff metrics
-      const totalDepartments = 3; // KYC, Payment, Queries
       const [
         totalTeamLeads,
         totalEmployees,
         activeEmployees,
         employeesOnLeave,
         todayAttendance,
-        allEmployees
+        allEmployees,
+        distinctDepartments
       ] = await Promise.all([
         Employee.countDocuments({ role: { $in: ['kyc_lead', 'payment_lead', 'queries_lead'] } }),
         Employee.countDocuments(),
         Employee.countDocuments({ status: 'active' }),
         Employee.countDocuments({ status: 'inactive' }),
         AttendanceRecord.find({ dateKey: todayKey }).lean(),
-        Employee.find().select('employeeId name department role status designation').lean()
+        Employee.find().select('employeeId name department role status designation').lean(),
+        Employee.distinct('department', { department: { $ne: Department.OVERALL } })
       ]);
+      const totalDepartments = distinctDepartments.length;
 
       // 2. KYC metrics
       const [pendingKycRequests, approvedKycRequests, rejectedKycRequests, reuploadRequests, overdueKycCount] =
@@ -120,7 +122,7 @@ export class ReportController {
             openItems: workloadMetric,
             completedItems: resolvedMetric,
             taskCompletionRate:
-              deptTasks.length > 0 ? Math.round((deptCompletedTasks / deptTasks.length) * 100) : 100
+              deptTasks.length > 0 ? Math.round((deptCompletedTasks / deptTasks.length) * 100) : 0
           };
         })
       );

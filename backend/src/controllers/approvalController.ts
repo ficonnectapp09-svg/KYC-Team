@@ -106,6 +106,7 @@ export class ApprovalController {
         makerId: currentUser.employeeId,
         makerName: currentUser.name,
         makerRole: currentUser.role,
+        makerDepartment: currentUser.department,
         makerNotes: makerNotes || '',
         initiatedAt: new Date(),
         status: ApprovalStatus.PENDING_CHECKER,
@@ -117,6 +118,7 @@ export class ApprovalController {
             actorId: currentUser.employeeId,
             actorName: currentUser.name,
             actorRole: currentUser.role,
+            actorDepartment: currentUser.department,
             details: `Transaction of ₹${amount} initiated for ${recipientName} (${recipientType}).`,
             timestamp: new Date()
           }
@@ -261,12 +263,14 @@ export class ApprovalController {
         approval.checkerId = currentUser.employeeId;
         approval.checkerName = currentUser.name;
         approval.checkerRole = currentUser.role;
+        approval.checkerDepartment = currentUser.department;
         approval.reviewedAt = new Date();
         approval.history.push({
           action: 'CHECKER_APPROVED',
           actorId: currentUser.employeeId,
           actorName: currentUser.name,
           actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
           details: `Approved by Checker ${currentUser.name}. Remarks: ${remarks || 'None'}`,
           timestamp: new Date()
         });
@@ -300,6 +304,7 @@ export class ApprovalController {
         approval.checkerId = currentUser.employeeId;
         approval.checkerName = currentUser.name;
         approval.checkerRole = currentUser.role;
+        approval.checkerDepartment = currentUser.department;
         approval.reviewedAt = new Date();
         approval.rejectionReason = reason;
         approval.history.push({
@@ -307,6 +312,7 @@ export class ApprovalController {
           actorId: currentUser.employeeId,
           actorName: currentUser.name,
           actorRole: currentUser.role,
+          actorDepartment: currentUser.department,
           details: `Rejected by Checker ${currentUser.name}. Reason: ${reason}`,
           timestamp: new Date()
         });

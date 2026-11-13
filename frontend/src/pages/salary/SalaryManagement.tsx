@@ -20,8 +20,22 @@ import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { PaginationBar } from '../../components/common/DepartmentTabHeader';
 import { SALARY_NAV_CATEGORIES } from '../../config/categoryCatalog';
+
+function getCurrentMonthPayrollPeriod() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthIdx = now.getMonth();
+  const monthStr = String(monthIdx + 1).padStart(2, '0');
+  const lastDay = String(new Date(year, monthIdx + 1, 0).getDate()).padStart(2, '0');
+  return {
+    periodLabel: now.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    periodStart: `${year}-${monthStr}-01`,
+    periodEnd: `${year}-${monthStr}-${lastDay}`
+  };
+}
 
 export const SalaryManagement: React.FC = () => {
   const { user } = useAuth();
@@ -49,12 +63,14 @@ export const SalaryManagement: React.FC = () => {
   const [showPrepareModal, setShowPrepareModal] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorAlert, setErrorAlert] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  const defaultPeriod = getCurrentMonthPayrollPeriod();
   const [prepareForm, setPrepareForm] = useState({
     employeeId: '',
-    periodLabel: 'November 2026',
-    periodStart: '2026-11-01',
-    periodEnd: '2026-11-30',
+    periodLabel: defaultPeriod.periodLabel,
+    periodStart: defaultPeriod.periodStart,
+    periodEnd: defaultPeriod.periodEnd,
     incentives: '0',
     bonus: '0',
     overtime: '0',
@@ -65,6 +81,7 @@ export const SalaryManagement: React.FC = () => {
   const loadData = async (targetPage = page) => {
     try {
       setLoading(true);
+      setLoadError(null);
       const q = new URLSearchParams();
       q.append('salaryCategory', activeCategory.key);
       q.append('page', String(targetPage));
@@ -81,6 +98,8 @@ export const SalaryManagement: React.FC = () => {
         setCategoryCounts(recRes.categoryCounts || {});
         setTotal(recRes.total ?? (recRes.data || []).length);
         setTotalPages(recRes.totalPages ?? 1);
+      } else {
+        setLoadError(recRes.message || 'Failed to load salary records.');
       }
       if (kpiRes.success) setKpis(kpiRes.data || {});
       if (structRes.success) setStructures(structRes.data || []);
@@ -89,8 +108,8 @@ export const SalaryManagement: React.FC = () => {
         const sRes = await apiFetch<Employee[]>('/staff');
         if (sRes.success) setStaffList(sRes.data || []);
       }
-    } catch (err) {
-      console.error('Failed to load salary records:', err);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load payroll records.');
     } finally {
       setLoading(false);
     }
@@ -321,6 +340,8 @@ export const SalaryManagement: React.FC = () => {
           variant="emerald"
         />
       </div>
+
+      <ErrorBanner message={loadError} onRetry={() => loadData(page)} />
 
       {/* Search Bar */}
       {viewMode === 'records' && (
@@ -608,7 +629,20 @@ export const SalaryManagement: React.FC = () => {
             {/* Authorization Chain */}
             <div className="space-y-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px]">
               <div className="flex items-center justify-between">
-                <span>Prepared By: <span className="font-bold">{selectedRecord.preparedBy.name}</span></span>
+                <span>
+                  Prepared By:{' '}
+                  <span className="font-bold">{selectedRecord.preparedBy.name}</span>
+                  {selectedRecord.preparedBy.userId && (
+                    <span className="font-mono text-[10px] text-slate-400 ml-1">
+                      ({selectedRecord.preparedBy.userId})
+                    </span>
+                  )}
+                  {selectedRecord.preparedBy.at && (
+                    <span className="text-slate-400 ml-1">
+                      • {new Date(selectedRecord.preparedBy.at).toLocaleDateString()}
+                    </span>
+                  )}
+                </span>
                 <button
                   type="button"
                   onClick={() => window.print()}
@@ -620,7 +654,15 @@ export const SalaryManagement: React.FC = () => {
               </div>
               {selectedRecord.departmentReviewedBy?.name ? (
                 <div className="text-sky-600 font-semibold">
-                  Dept Reviewed By: {selectedRecord.departmentReviewedBy.name} — {selectedRecord.departmentReviewedBy.notes}
+                  Dept Reviewed By: {selectedRecord.departmentReviewedBy.name}
+                  {selectedRecord.departmentReviewedBy.userId && (
+                    <span className="font-mono text-[10px] ml-1">
+                      ({selectedRecord.departmentReviewedBy.userId})
+                    </span>
+                  )}
+                  {selectedRecord.departmentReviewedBy.notes && (
+                    <span> — {selectedRecord.departmentReviewedBy.notes}</span>
+                  )}
                 </div>
               ) : (user?.role.includes('lead') && selectedRecord.status === 'Submitted for Overall Approval' && (
                 <button
@@ -634,6 +676,16 @@ export const SalaryManagement: React.FC = () => {
               {selectedRecord.approvedByOverallLead ? (
                 <div className="text-emerald-600 font-bold">
                   Approved By Overall Lead: {selectedRecord.approvedByOverallLead.name}
+                  {selectedRecord.approvedByOverallLead.userId && (
+                    <span className="font-mono text-[10px] ml-1">
+                      ({selectedRecord.approvedByOverallLead.userId})
+                    </span>
+                  )}
+                  {selectedRecord.approvedByOverallLead.at && (
+                    <span className="text-slate-400 font-normal ml-1">
+                      • {new Date(selectedRecord.approvedByOverallLead.at).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <div className="text-amber-600 font-bold flex items-center gap-1">
@@ -644,6 +696,11 @@ export const SalaryManagement: React.FC = () => {
               {selectedRecord.paidDetails && (
                 <div className="text-indigo-600 font-bold">
                   Paid By: {selectedRecord.paidDetails.paidByName} (Txn: {selectedRecord.paidDetails.transactionId})
+                  {selectedRecord.paidDetails.paymentDate && (
+                    <span className="text-slate-400 font-normal ml-1">
+                      • {new Date(selectedRecord.paidDetails.paymentDate).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

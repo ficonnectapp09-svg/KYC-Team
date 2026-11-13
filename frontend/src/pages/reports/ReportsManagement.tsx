@@ -3,6 +3,7 @@ import { BarChart3, Download, ShieldCheck, CreditCard, MessageSquare } from 'luc
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export const ReportsManagement: React.FC = () => {
@@ -12,31 +13,33 @@ export const ReportsManagement: React.FC = () => {
   const [payReport, setPayReport] = useState<any>(null);
   const [queryReport, setQueryReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadReports = async () => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+      const isOverall = user?.role === 'overall_lead';
+      if (isOverall || user?.role === 'kyc_lead') {
+        const r = await apiFetch('/reports/kyc');
+        if (r.success) setKycReport(r.data);
+      }
+      if (isOverall || user?.role === 'payment_lead') {
+        const r = await apiFetch('/reports/payment');
+        if (r.success) setPayReport(r.data);
+      }
+      if (isOverall || user?.role === 'queries_lead') {
+        const r = await apiFetch('/reports/queries');
+        if (r.success) setQueryReport(r.data);
+      }
+    } catch (err: any) {
+      setLoadError(err?.message || 'Failed to load analytics reports.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadReports = async () => {
-      try {
-        setLoading(true);
-        const isOverall = user?.role === 'overall_lead';
-        if (isOverall || user?.role === 'kyc_lead') {
-          const r = await apiFetch('/reports/kyc');
-          if (r.success) setKycReport(r.data);
-        }
-        if (isOverall || user?.role === 'payment_lead') {
-          const r = await apiFetch('/reports/payment');
-          if (r.success) setPayReport(r.data);
-        }
-        if (isOverall || user?.role === 'queries_lead') {
-          const r = await apiFetch('/reports/queries');
-          if (r.success) setQueryReport(r.data);
-        }
-      } catch (err) {
-        console.error('Report load error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadReports();
   }, [user]);
 
@@ -80,6 +83,8 @@ export const ReportsManagement: React.FC = () => {
           <span>Export CSV Report</span>
         </button>
       </div>
+
+      <ErrorBanner message={loadError} onRetry={loadReports} />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">

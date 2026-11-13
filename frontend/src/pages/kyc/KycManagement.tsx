@@ -24,6 +24,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { DepartmentTabHeader, PaginationBar, TabSummaryCounts } from '../../components/common/DepartmentTabHeader';
 import { KYC_NAV_CATEGORIES } from '../../config/categoryCatalog';
 
@@ -72,14 +73,16 @@ export const KycManagement: React.FC = () => {
   const [actionMode, setActionMode] = useState<'NONE' | 'REJECT' | 'REUPLOAD' | 'ESCALATE' | 'RESUBMIT'>('NONE');
   const [actionReason, setActionReason] = useState('');
   const [reuploadDocType, setReuploadDocType] = useState('');
-  const [resubmitUrl, setResubmitUrl] = useState('https://placehold.co/700x450/png?text=Corrected+KYC+Document+v2');
+  const [resubmitUrl, setResubmitUrl] = useState('');
   const [resubmitDocName, setResubmitDocName] = useState('');
   const [uploadingResubmit, setUploadingResubmit] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = async (targetPage = page) => {
     try {
       setLoading(true);
+      setLoadError(null);
       const query = new URLSearchParams();
       query.append('category', activeCategory.key);
       query.append('page', String(targetPage));
@@ -103,6 +106,8 @@ export const KycManagement: React.FC = () => {
         setCategoryCounts((reqRes as any).categoryCounts || {});
         setTotal((reqRes as any).total ?? (reqRes.data || []).length);
         setTotalPages((reqRes as any).totalPages ?? 1);
+      } else {
+        setLoadError((reqRes as any).message || 'Failed to load KYC requests.');
       }
       if (statsRes.success) setStats(statsRes.data || {});
 
@@ -112,8 +117,8 @@ export const KycManagement: React.FC = () => {
           setKycStaff((staffRes.data || []).filter(s => s.status === 'active'));
         }
       }
-    } catch (err) {
-      console.error('Failed to load KYC data:', err);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load KYC requests.');
     } finally {
       setLoading(false);
     }
@@ -358,6 +363,8 @@ export const KycManagement: React.FC = () => {
         onResetFilters={resetFilters}
       />
 
+      <ErrorBanner message={loadError} onRetry={() => loadData(page)} />
+
       {feedbackMsg && (
         <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
           <div className="flex items-center gap-2 font-semibold">
@@ -413,7 +420,9 @@ export const KycManagement: React.FC = () => {
                       <th className="py-3.5 px-4">Business Name & Type</th>
                       <th className="py-3.5 px-4">Reg / KYC Submitted</th>
                       <th className="py-3.5 px-4">Assigned Employee</th>
-                      <th className="py-3.5 px-4">Status & Payment Route</th>
+                      <th className="py-3.5 px-4">Verification Status</th>
+                      <th className="py-3.5 px-4">Approved / Reviewed By</th>
+                      <th className="py-3.5 px-4">Approver Role / Dept</th>
                       <th className="py-3.5 px-4">Pending Duration</th>
                       <th className="py-3.5 px-5 text-right">View Details</th>
                     </>
@@ -425,6 +434,8 @@ export const KycManagement: React.FC = () => {
                       <th className="py-3.5 px-4">Reg / KYC Submitted</th>
                       <th className="py-3.5 px-4">Assigned Employee</th>
                       <th className="py-3.5 px-4">Status & Payment Route</th>
+                      <th className="py-3.5 px-4">Approved / Reviewed By</th>
+                      <th className="py-3.5 px-4">Approver Role / Dept</th>
                       <th className="py-3.5 px-4">Pending Duration</th>
                       <th className="py-3.5 px-5 text-right">View Details</th>
                     </>
@@ -447,6 +458,8 @@ export const KycManagement: React.FC = () => {
                       <th className="py-3.5 px-4">Reg / KYC Submitted</th>
                       <th className="py-3.5 px-4">Assigned Employee</th>
                       <th className="py-3.5 px-4">Verification Status</th>
+                      <th className="py-3.5 px-4">Approved / Reviewed By</th>
+                      <th className="py-3.5 px-4">Approver Role / Dept</th>
                       <th className="py-3.5 px-4">Pending Duration</th>
                       <th className="py-3.5 px-5 text-right">View Details</th>
                     </>
@@ -568,6 +581,53 @@ export const KycManagement: React.FC = () => {
                               <span className="text-[10px] text-slate-400">Direct Approval</span>
                             )}
                           </div>
+                        )}
+                      </td>
+
+                      {/* Official Approver Attribution Columns */}
+                      <td className="py-3.5 px-4 text-xs">
+                        {req.status === 'Approved' ? (
+                          req.approvedBy?.name ? (
+                            <div>
+                              <div className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{req.approvedBy.name}</span>
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-400">{req.approvedBy.employeeId}</div>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Approval History Not Available</span>
+                          )
+                        ) : req.status === 'Rejected' ? (
+                          req.rejectedBy?.name ? (
+                            <div>
+                              <div className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                                <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                <span>{req.rejectedBy.name}</span>
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-400">{req.rejectedBy.employeeId}</div>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Rejection History Not Available</span>
+                          )
+                        ) : (
+                          <span className="text-[11px] text-amber-600 font-medium">Pending Verification</span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-xs">
+                        {req.status === 'Approved' && req.approvedBy ? (
+                          <div>
+                            <div className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{req.approvedBy.role.replace(/_/g, ' ')}</div>
+                            <div className="text-[10px] text-slate-400">{req.approvedBy.department}</div>
+                          </div>
+                        ) : req.status === 'Rejected' && req.rejectedBy ? (
+                          <div>
+                            <div className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{req.rejectedBy.role.replace(/_/g, ' ')}</div>
+                            <div className="text-[10px] text-slate-400">{req.rejectedBy.department}</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
                         )}
                       </td>
 
@@ -847,19 +907,155 @@ export const KycManagement: React.FC = () => {
                 )}
               </div>
 
-              {/* Assignment History */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2 max-h-40 overflow-y-auto">
-                <h4 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
-                  Assignment Audit Log ({selectedReq.assignmentHistory.length})
-                </h4>
-                {selectedReq.assignmentHistory.map((h, i) => (
-                  <div key={i} className="text-[11px] pb-2 border-b border-slate-200/50 dark:border-slate-700/50 last:border-none">
-                    <span className="font-bold text-indigo-600">{h.assignmentType}:</span> Assigned to{' '}
-                    <span className="font-semibold">{h.newEmployeeName}</span>
-                    {h.previousEmployeeName && ` (from ${h.previousEmployeeName})`}
-                    <div className="text-slate-400 text-[10px]">{h.reason}</div>
+              {/* Official Approval / Rejection Attribution Card */}
+              {selectedReq.status === 'Approved' ? (
+                <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 text-[10px] flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Official Verification & Approval Attribution
+                    </h4>
+                    <Badge variant="success">Approved</Badge>
                   </div>
-                ))}
+                  {selectedReq.approvedBy?.name ? (
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Approved By Name</span>
+                        <div className="font-bold text-slate-900 dark:text-white">{selectedReq.approvedBy.name}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Approver Employee ID</span>
+                        <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{selectedReq.approvedBy.employeeId}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Approver Role</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{selectedReq.approvedBy.role.replace(/_/g, ' ')}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Approver Department</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">{selectedReq.approvedBy.department}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Approval Date & Time</span>
+                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                          {selectedReq.approvedBy.at ? new Date(selectedReq.approvedBy.at).toLocaleString() : 'N/A'}
+                        </div>
+                      </div>
+                      {selectedReq.approvedBy.remarks && (
+                        <div className="col-span-2 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                          <span className="text-[10px] text-slate-500 uppercase font-semibold">Approval Remarks</span>
+                          <div className="font-medium text-slate-800 dark:text-slate-200">{selectedReq.approvedBy.remarks}</div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs">
+                      <div className="font-bold">Approval History Not Available</div>
+                      <div className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
+                        This record was approved in the ecosystem prior to audit attribution tracking.
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-[11px] pt-1 text-slate-500 border-t border-emerald-100 dark:border-emerald-900">
+                    Assigned KYC Specialist: <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedReq.assignedEmployeeName || 'Unassigned Queue'}</span> ({selectedReq.assignedEmployeeId || 'N/A'})
+                  </div>
+                </div>
+              ) : selectedReq.status === 'Rejected' ? (
+                <div className="p-4 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300 text-[10px] flex items-center gap-1.5">
+                      <XCircle className="w-4 h-4 text-rose-600" />
+                      Official Rejection Attribution
+                    </h4>
+                    <Badge variant="danger">Rejected</Badge>
+                  </div>
+                  {selectedReq.rejectedBy?.name ? (
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Rejected By Name</span>
+                        <div className="font-bold text-slate-900 dark:text-white">{selectedReq.rejectedBy.name}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Employee ID</span>
+                        <div className="font-mono font-bold text-rose-600 dark:text-rose-400">{selectedReq.rejectedBy.employeeId}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Role</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{selectedReq.rejectedBy.role.replace(/_/g, ' ')}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Department</span>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">{selectedReq.rejectedBy.department}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Rejection Date & Time</span>
+                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                          {selectedReq.rejectedBy.at ? new Date(selectedReq.rejectedBy.at).toLocaleString() : 'N/A'}
+                        </div>
+                      </div>
+                      <div className="col-span-2 pt-1 border-t border-rose-200/60 dark:border-rose-800/60">
+                        <span className="text-[10px] text-slate-500 uppercase font-semibold">Mandatory Rejection Reason</span>
+                        <div className="font-medium text-rose-800 dark:text-rose-300">{selectedReq.rejectedBy.reason || selectedReq.verificationRemarks}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs">
+                      <div className="font-bold">Rejection History Not Available</div>
+                      <div className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
+                        Reason: {selectedReq.verificationRemarks || 'No remarks recorded.'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 text-[10px] flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      Pending Verification Status
+                    </h4>
+                    {getStatusBadge(selectedReq.status)}
+                  </div>
+                  <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                    <div>Assigned Specialist: <span className="font-semibold text-slate-900 dark:text-white">{selectedReq.assignedEmployeeName || 'Unassigned Queue'}</span> ({selectedReq.assignedEmployeeId || 'N/A'})</div>
+                    <div>Submission Date: <span className="font-semibold text-slate-900 dark:text-white">{new Date(selectedReq.submissionDate).toLocaleString()}</span></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Complete KYC Activity & Audit Timeline */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+                <h4 className="font-bold uppercase tracking-wider text-slate-500 text-[10px] flex items-center justify-between">
+                  <span>KYC Activity & Audit Timeline ({(selectedReq.approvalHistory?.length || 0) + (selectedReq.assignmentHistory?.length || 0)})</span>
+                </h4>
+                {(selectedReq.approvalHistory?.length || 0) > 0 ? (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedReq.approvalHistory!.map((ev, i) => (
+                      <div key={i} className="text-[11px] p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                            ev.action === 'APPROVED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                            ev.action === 'REJECTED' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' :
+                            ev.action === 'RE_UPLOAD_REQUESTED' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                            ev.action === 'ESCALATED' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' :
+                            'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                          }`}>
+                            {ev.action}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{new Date(ev.timestamp).toLocaleString()}</span>
+                        </div>
+                        <div className="text-slate-700 dark:text-slate-300">
+                          By: <span className="font-semibold">{ev.actorName}</span> ({ev.actorId})
+                          {ev.actorRole && <span className="text-slate-400"> • {ev.actorRole.replace(/_/g, ' ')}</span>}
+                          {ev.actorDepartment && <span className="text-slate-400"> ({ev.actorDepartment})</span>}
+                        </div>
+                        {ev.remarks && <div className="text-slate-500 text-[10px] italic">"{ev.remarks}"</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-400 italic text-[11px]">Approval History Not Available</div>
+                )}
               </div>
 
               {/* Action Controls */}

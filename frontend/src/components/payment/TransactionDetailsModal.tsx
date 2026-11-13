@@ -16,22 +16,30 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
 }) => {
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     if (!transaction) {
       setDetail(null);
+      setDetailError(null);
       return;
     }
     const fetchDetail = async () => {
       try {
         setLoading(true);
+        setDetailError(null);
         const res = await apiFetch<any>(`/payments/transactions/${transaction.transactionId}`);
         if (active && res.success && res.data) {
           setDetail(res.data);
+        } else if (active) {
+          setDetailError(res.message || 'Could not load linked ledger records.');
         }
-      } catch {
-        if (active) setDetail(transaction);
+      } catch (err: any) {
+        if (active) {
+          setDetail(transaction);
+          setDetailError(err?.message || 'Unable to load full ledger details from server.');
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -56,6 +64,11 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
         <div className="space-y-4 text-xs">
           {loading && (
             <div className="text-[11px] text-indigo-500 font-semibold">Loading linked approvals & audit history...</div>
+          )}
+          {detailError && (
+            <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200 font-semibold">
+              {detailError}
+            </div>
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50">

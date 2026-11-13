@@ -25,6 +25,7 @@ import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { DepartmentTabHeader, PaginationBar, TabSummaryCounts } from '../../components/common/DepartmentTabHeader';
 import { CategoryLedgerView } from '../../components/payment/CategoryLedgerView';
 import { TransactionDetailsModal } from '../../components/payment/TransactionDetailsModal';
@@ -80,6 +81,7 @@ export const PaymentManagement: React.FC = () => {
   const [showAdjustModal, setShowAdjustModal] = useState<AgentDepositLiability | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorAlert, setErrorAlert] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Form states
   const [initiateForm, setInitiateForm] = useState({
@@ -181,8 +183,9 @@ export const PaymentManagement: React.FC = () => {
           setPaymentStaff((staffRes.data || []).filter((s: Employee) => s.status === 'active'));
         }
       }
-    } catch (err) {
-      console.error('Failed to load payment data:', err);
+      setLoadError(null);
+    } catch (err: any) {
+      setLoadError(err?.message || 'Unable to load payment operations data.');
     } finally {
       setLoading(false);
     }
@@ -422,6 +425,8 @@ export const PaymentManagement: React.FC = () => {
         </div>
       ) : (
         <>
+          <ErrorBanner message={loadError} onRetry={() => loadPaymentData(page)} />
+
           <DepartmentTabHeader
             title={activeCategory.label}
             description={activeCategory.description}

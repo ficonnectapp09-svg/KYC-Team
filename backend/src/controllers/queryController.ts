@@ -473,6 +473,8 @@ export class QueryController {
       query.resolution = {
         resolvedByUserId: currentUser.employeeId,
         resolvedByName: currentUser.name,
+        resolvedByRole: currentUser.role,
+        resolvedByDepartment: currentUser.department,
         resolvedAt: new Date(),
         resolutionNotes: resolutionNotes || 'Case marked as resolved.'
       };

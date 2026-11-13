@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Settings, ShieldCheck, Save, CheckCircle2, Lock } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { Badge } from '../../components/common/Badge';
+import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface SystemConfigState {
@@ -41,20 +42,24 @@ export const SettingsPage: React.FC = () => {
   const [statusMsg, setStatusMsg] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const loadSettings = async () => {
-      setLoading(true);
-      try {
-        const res = await apiFetch<SystemConfigState>('/settings');
-        if (res.success && res.data) {
-          setConfig(res.data);
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load settings.');
-      } finally {
-        setLoading(false);
+  const loadSettings = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiFetch<SystemConfigState>('/settings');
+      if (res.success && res.data) {
+        setConfig(res.data);
+      } else {
+        setError((res as any).message || 'Failed to load settings.');
       }
-    };
+    } catch (err: any) {
+      setError(err.message || 'Failed to load settings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadSettings();
   }, []);
 
@@ -84,7 +89,7 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-12 w-72 rounded-xl bg-slate-200 dark:bg-slate-800" />
@@ -93,6 +98,14 @@ export const SettingsPage: React.FC = () => {
             <div key={i} className="h-64 rounded-2xl bg-slate-200 dark:bg-slate-800" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="space-y-4">
+        <ErrorBanner message={error || 'Unable to load system configuration from backend.'} onRetry={loadSettings} />
       </div>
     );
   }

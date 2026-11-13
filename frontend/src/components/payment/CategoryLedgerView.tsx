@@ -25,6 +25,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { StatCard } from '../common/StatCard';
 import { Badge } from '../common/Badge';
 import { EmptyState } from '../common/EmptyState';
+import { ErrorBanner } from '../common/ErrorBanner';
 import { DepartmentTabHeader, PaginationBar, TabSummaryCounts } from '../common/DepartmentTabHeader';
 
 interface CategoryLedgerViewProps {
@@ -66,6 +67,7 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
   const [summary, setSummary] = useState<TabSummaryCounts>({});
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -104,6 +106,7 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
   const loadData = async (targetPage = page) => {
     try {
       setLoading(true);
+      setLoadError(null);
       const q = buildQueryParams(targetPage, true);
       const [txnRes, kpiRes] = await Promise.all([
         apiFetch<any>(`/payments/transactions?${q.toString()}`),
@@ -115,12 +118,14 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
         setSummary(txnRes.summary || {});
         setTotal(txnRes.total ?? (txnRes.data || []).length);
         setTotalPages(txnRes.totalPages ?? 1);
+      } else {
+        setLoadError(txnRes?.message || `Failed to load ${section} transactions.`);
       }
       if (kpiRes?.success) {
         setKpis(kpiRes.data || {});
       }
-    } catch (err) {
-      console.error(`Failed to load ${section} transactions:`, err);
+    } catch (err: any) {
+      setLoadError(err?.message || `Unable to load ${section} transactions.`);
     } finally {
       setLoading(false);
     }
@@ -169,8 +174,8 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('CSV export error:', err);
+    } catch (err: any) {
+      setLoadError(err?.message || 'CSV export failed.');
     } finally {
       setExporting(false);
     }
@@ -534,6 +539,8 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
         }}
         onResetFilters={handleReset}
       />
+
+      <ErrorBanner message={loadError} onRetry={() => loadData(page)} />
 
       {/* Category-Specific Listing Table */}
       {loading ? (
