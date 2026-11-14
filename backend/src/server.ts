@@ -1,7 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { connectDatabase } from './config/database';
 import { configureCloudinary } from './config/cloudinary';
 import { errorHandler } from './middleware/errorHandler';
@@ -21,7 +23,6 @@ import attendanceRoutes from './routes/attendanceRoutes';
 import settingsRoutes from './routes/settingsRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 
-dotenv.config();
 configureCloudinary();
 
 const app = express();

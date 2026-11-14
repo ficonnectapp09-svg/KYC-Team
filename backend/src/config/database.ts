@@ -8,16 +8,23 @@ try {
 
 export const connectDatabase = async (): Promise<void> => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/connect_db';
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      throw new Error('[Database Configuration Error]: MONGODB_URI is not defined in backend/.env');
+    }
+
     const dbName = process.env.DB_NAME || 'connect_db';
 
     mongoose.set('strictQuery', false);
 
-    console.log(`[Database]: Connecting to MongoDB (${dbName})...`);
+    console.log(`[Database]: Connecting securely to MongoDB (${dbName})...`);
     await mongoose.connect(mongoUri, {
       dbName,
+      maxPoolSize: 25,
+      minPoolSize: 5,
       serverSelectionTimeoutMS: 20000,
-      connectTimeoutMS: 20000,
+      socketTimeoutMS: 45000,
+      heartbeatFrequencyMS: 10000,
       family: 4
     });
 
@@ -28,8 +35,16 @@ export const connectDatabase = async (): Promise<void> => {
   }
 };
 
+mongoose.connection.on('connected', () => {
+  console.log('[Database]: MongoDB connection active and ready.');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('[Database]: MongoDB connection successfully re-established.');
+});
+
 mongoose.connection.on('disconnected', () => {
-  console.warn('[Database]: MongoDB disconnected! Trying to reconnect...');
+  console.warn('[Database]: MongoDB disconnected! Reconnecting automatically...');
 });
 
 mongoose.connection.on('error', (err) => {

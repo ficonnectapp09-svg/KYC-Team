@@ -37,7 +37,7 @@ const parseApiResponse = async <T = any>(response: Response, endpoint: string) =
     } else if (response.status >= 500) {
       data = {
         success: false,
-        message: 'Backend server is unreachable. Please ensure the backend API server is running on port 8007.'
+        message: 'Backend server returned an internal error (HTTP 500). Please check backend logs.'
       };
     } else {
       data = {
@@ -53,7 +53,7 @@ const parseApiResponse = async <T = any>(response: Response, endpoint: string) =
         success: false,
         message:
           response.status >= 500
-            ? 'Backend server is unreachable or returned an invalid response. Please ensure the backend API server is running on port 8007.'
+            ? (rawText && rawText.length < 200 ? rawText : `Backend server returned an error (HTTP ${response.status}).`)
             : `Unexpected non-JSON response from server (HTTP ${response.status}).`
       };
     }
