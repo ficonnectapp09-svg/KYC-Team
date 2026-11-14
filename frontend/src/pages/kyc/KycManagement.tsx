@@ -750,15 +750,17 @@ export const KycManagement: React.FC = () => {
       </Modal>
 
       {/* Redesigned 3-Panel Registration-Based KYC Verification Workbench */}
-      <KycVerificationWorkbench
-        request={selectedReq}
-        isOpen={!!selectedReq}
-        onClose={() => setSelectedReq(null)}
-        onRefresh={() => loadData(page)}
-        kycStaff={kycStaff}
-        currentUserRole={user?.role}
-        currentUserId={user?.employeeId}
-      />
+      {selectedReq && (
+        <KycVerificationWorkbench
+          request={selectedReq}
+          isOpen={!!selectedReq}
+          onClose={() => setSelectedReq(null)}
+          onRefresh={() => loadData(page)}
+          kycStaff={kycStaff}
+          currentUserRole={user?.role}
+          currentUserId={user?.employeeId}
+        />
+      )}
     </div>
   );
 };

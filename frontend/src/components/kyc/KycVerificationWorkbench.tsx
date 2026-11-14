@@ -39,7 +39,7 @@ import {
 import JSZip from 'jszip';
 import { KycRequest, Employee } from '../../types';
 import { Badge } from '../common/Badge';
-import { apiFetch } from '../../services/api';
+import { apiFetch, getAuthToken } from '../../services/api';
 
 interface KycVerificationWorkbenchProps {
   request: KycRequest | null;
@@ -74,8 +74,6 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   currentUserRole,
   currentUserId
 }) => {
-  if (!isOpen || !request) return null;
-
   // Viewport / Maximize state
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -125,13 +123,22 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Re-fetch fresh request data upon mount
-  const [liveReq, setLiveReq] = useState<KycRequest>(request);
+  const [liveReq, setLiveReq] = useState<KycRequest | null>(request);
 
   useEffect(() => {
+    if (request) {
+      setLiveReq(request);
+      setActiveDocIndex(0);
+      setActiveSide('front');
+    }
+  }, [request]);
+
+  useEffect(() => {
+    if (!request?.requestId) return;
     let isMounted = true;
     const fetchFresh = async () => {
       try {
-        const res = await apiFetch<KycRequest>(`/api/kyc/requests/${request.requestId}`);
+        const res = await apiFetch<KycRequest>(`/kyc/requests/${request.requestId}`);
         if (isMounted && res.success && res.data) {
           setLiveReq(res.data);
         }
@@ -143,7 +150,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
     return () => {
       isMounted = false;
     };
-  }, [request.requestId]);
+  }, [request?.requestId]);
 
   // Reset viewer controls when active document changes
   useEffect(() => {
@@ -154,7 +161,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   }, [activeDocIndex]);
 
   // All documents list
-  const documents = liveReq.documents || [];
+  const documents = liveReq?.documents || [];
   const activeDoc = documents[activeDocIndex] || documents[0] || null;
 
   // Filtered documents list based on search and status
@@ -209,21 +216,22 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
   // Missing documents determination
   const missingDocs = useMemo(() => {
-    const checklist = CATEGORY_DOC_CHECKLIST[liveReq.applicantType] || [];
+    const checklist = CATEGORY_DOC_CHECKLIST[liveReq?.applicantType || ''] || [];
     const uploadedNames = documents.map(d => (d.docType || '').toLowerCase());
     return checklist.filter(reqDoc => {
       const needle = reqDoc.toLowerCase();
       return !uploadedNames.some(u => u.includes(needle) || needle.includes(u));
     });
-  }, [liveReq.applicantType, documents]);
+  }, [liveReq?.applicantType, documents]);
 
   // Queue Duration Formatter
   const queueDuration = useMemo(() => {
+    if (!liveReq?.submissionDate) return '-';
     if (liveReq.status === 'Approved' || liveReq.status === 'Rejected') return 'Completed';
     const hrs = Math.max(0, Math.round((Date.now() - new Date(liveReq.submissionDate).getTime()) / (1000 * 60 * 60)));
     if (hrs >= 24) return `${Math.floor(hrs / 24)}d ${hrs % 24}h in Queue`;
     return `${hrs}h in Queue`;
-  }, [liveReq.submissionDate, liveReq.status]);
+  }, [liveReq?.submissionDate, liveReq?.status]);
 
   // Single Document Download Handler
   const handleDownloadSingle = (e: React.MouseEvent, docUrl: string, docName: string) => {
@@ -239,13 +247,13 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
   // "Download All Documents (ZIP)" Handler
   const handleDownloadAllZip = async () => {
-    if (documents.length === 0) return;
+    if (!liveReq || documents.length === 0) return;
     setDownloadingZip(true);
     setZipProgressText('Initiating secure archive download...');
 
     try {
       // 1. Try Backend Streaming ZIP endpoint
-      const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || '';
+      const token = getAuthToken() || localStorage.getItem('token') || '';
       const zipUrl = `/api/kyc/requests/${liveReq.requestId}/download-zip`;
 
       const response = await fetch(zipUrl, {
@@ -322,12 +330,13 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
   // KYC Actions Execution Handler
   const handleExecuteAction = async (actionType: 'APPROVE' | 'REJECT' | 'REUPLOAD' | 'ESCALATE' | 'RESUBMIT') => {
+    if (!liveReq) return;
     setActionFeedback(null);
     setSubmittingAction(true);
 
     try {
       if (actionType === 'APPROVE') {
-        await apiFetch('/api/kyc/verify', {
+        await apiFetch('/kyc/verify', {
           method: 'POST',
           body: JSON.stringify({
             requestId: liveReq.requestId,
@@ -347,7 +356,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           setSubmittingAction(false);
           return;
         }
-        await apiFetch('/api/kyc/verify', {
+        await apiFetch('/kyc/verify', {
           method: 'POST',
           body: JSON.stringify({
             requestId: liveReq.requestId,
@@ -362,7 +371,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           setSubmittingAction(false);
           return;
         }
-        await apiFetch('/api/kyc/verify', {
+        await apiFetch('/kyc/verify', {
           method: 'POST',
           body: JSON.stringify({
             requestId: liveReq.requestId,
@@ -373,7 +382,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
         });
         setActionFeedback({ type: 'success', message: `Re-upload requested for ${selectedDocForReupload}.` });
       } else if (actionType === 'ESCALATE') {
-        await apiFetch(`/api/kyc/requests/${liveReq.requestId}/escalate`, {
+        await apiFetch(`/kyc/requests/${liveReq.requestId}/escalate`, {
           method: 'POST',
           body: JSON.stringify({
             reason: actionReason || 'Escalated to KYC Team Lead for supervisory assessment.'
@@ -386,7 +395,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           setSubmittingAction(false);
           return;
         }
-        await apiFetch(`/api/kyc/requests/${liveReq.requestId}/resubmit`, {
+        await apiFetch(`/kyc/requests/${liveReq.requestId}/resubmit`, {
           method: 'POST',
           body: JSON.stringify({
             docType: selectedDocForReupload || activeDoc?.docType || 'Identity Document',
@@ -405,7 +414,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
       // Refresh parent table & local view
       onRefresh();
-      const updated = await apiFetch<KycRequest>(`/api/kyc/requests/${liveReq.requestId}`);
+      const updated = await apiFetch<KycRequest>(`/kyc/requests/${liveReq.requestId}`);
       if (updated.success && updated.data) {
         setLiveReq(updated.data);
       }
@@ -415,6 +424,8 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
       setSubmittingAction(false);
     }
   };
+
+  if (!isOpen || !request || !liveReq) return null;
 
   // Helper for rendering details
   const details = liveReq.applicantDetails || {};

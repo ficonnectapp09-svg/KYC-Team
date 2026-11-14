@@ -95,9 +95,22 @@ export const apiFetch = async <T = any>(
     ...(options.headers || {})
   };
 
+  // Normalize endpoint to prevent double '/api/api/' or missing leading slash
+  let cleanEndpoint = endpoint.trim();
+  if (cleanEndpoint.startsWith('/api/')) {
+    cleanEndpoint = cleanEndpoint.substring(4);
+  } else if (cleanEndpoint.startsWith('api/')) {
+    cleanEndpoint = cleanEndpoint.substring(3);
+  }
+  if (!cleanEndpoint.startsWith('/')) {
+    cleanEndpoint = '/' + cleanEndpoint;
+  }
+
+  const url = `${API_BASE}${cleanEndpoint}`;
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${endpoint}`, {
+    response = await fetch(url, {
       ...options,
       headers
     });
@@ -105,7 +118,7 @@ export const apiFetch = async <T = any>(
     throw new Error('Unable to reach the backend server. Please ensure the API server is running.');
   }
 
-  return parseApiResponse<T>(response, endpoint);
+  return parseApiResponse<T>(response, url);
 };
 
 /**
