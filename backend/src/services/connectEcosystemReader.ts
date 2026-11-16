@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { KycRequest } from '../models/KycRequest';
 import { ApplicantType, KycStatus } from '../config/constants';
-import { generateId, maskAadhaar, maskPan } from '../utils/security';
+import { generateId, maskAadhaar, maskPan, maskBankAccount } from '../utils/security';
 
 export interface EcosystemSummary {
   ordersCount: number;
@@ -350,6 +350,48 @@ export class ConnectEcosystemReader {
           approvalHistory
         });
         importedCount += 1;
+      } else {
+        await KycRequest.updateOne(
+          { applicantId },
+          {
+            $set: {
+              'applicantDetails.businessName': String(v.businessName || v.storeType || ''),
+              'applicantDetails.category': String(v.category || v.storeType || 'Services'),
+              'applicantDetails.subCategory': String(v.subCategory || v.subcategory || v.category || ''),
+              'applicantDetails.state': v.state || v.assignedState || '',
+              'applicantDetails.district': v.district || v.assignedDistrict || '',
+              'applicantDetails.division': v.division || v.assignedDivision || '',
+              'applicantDetails.taluk': v.taluk || '',
+              'applicantDetails.pincode': v.pincode || '',
+              'applicantDetails.territoryFormatted': [v.division, v.district, v.state, v.pincode ? `(${v.pincode})` : ''].filter(Boolean).join(', ') || v.state || '',
+              'applicantDetails.address': {
+                doorNo: v.buildingNo || v.doorNo || '',
+                street: v.streetName || v.street || '',
+                village: v.postOffice || v.village || v.locality || '',
+                taluk: v.taluk || '',
+                district: v.district || v.assignedDistrict || '',
+                state: v.state || v.assignedState || '',
+                pincode: v.pincode || '',
+                fullAddress: v.location?.address || v.address || ''
+              },
+              'applicantDetails.registrationSource': v.registrationSource || v.createdVia || v.joiningType || (v.onboardingAgent || v.agentName ? 'Agent Onboarding' : 'Direct Registration'),
+              'applicantDetails.onboardingAgent': v.onboardingAgent || (v.agentName ? {
+                id: v.agentRegistrationId || v.agentId || '',
+                name: v.agentName,
+                phone: v.onboardingAgentPhone || '',
+                role: v.onboardingAgentRole || 'Agent'
+              } : null),
+              'applicantDetails.responsibleAdmin': v.responsibleAdmin || (v.approvedByName ? {
+                id: v.approvedById || v.responsibleAdminId || '',
+                name: v.approvedByName || v.responsibleAdminName || '',
+                phone: v.responsibleAdminPhone || '',
+                role: v.approvedByRole || v.responsibleAdminRole || 'Admin',
+                pincode: v.pincode || ''
+              } : null),
+              'applicantDetails.pincodeAdminApproval': v.pincodeAdminApproval || null
+            }
+          }
+        );
       }
     }
 
@@ -431,6 +473,27 @@ export class ConnectEcosystemReader {
           approvalHistory
         });
         importedCount += 1;
+      } else {
+        const territoryFormatted =
+          typeof a.territory === 'object' && a.territory !== null
+            ? [a.territory.division, a.territory.district, a.territory.state, a.territory.pincode].filter(Boolean).join(', ')
+            : String(a.territory || a.assignedTerritory || a.state || '');
+
+        await KycRequest.updateOne(
+          { applicantId },
+          {
+            $set: {
+              'applicantDetails.roleTier': a.roleTier || a.tier || 'District Agent',
+              'applicantDetails.territory': typeof a.territory === 'object' ? JSON.stringify(a.territory) : String(a.territory || ''),
+              'applicantDetails.territoryFormatted': territoryFormatted,
+              'applicantDetails.state': (typeof a.territory === 'object' ? a.territory?.state : a.state) || '',
+              'applicantDetails.district': (typeof a.territory === 'object' ? a.territory?.district : a.district) || '',
+              'applicantDetails.division': (typeof a.territory === 'object' ? a.territory?.division : a.division) || '',
+              'applicantDetails.pincode': (typeof a.territory === 'object' ? a.territory?.pincode : a.pincode) || '',
+              'applicantDetails.registrationSource': a.registrationSource || 'Direct Registration'
+            }
+          }
+        );
       }
     }
 

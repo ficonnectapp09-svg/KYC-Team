@@ -17,7 +17,8 @@ export const KYC_NAV_CATEGORIES: NavCategoryDef[] = [
   { key: 'TECHNICIAN', slug: 'technician', label: 'Technician KYC', description: 'Service technician skill certificate & identity verification' },
   { key: 'KYC_EMPLOYEE', slug: 'kyc-employee', label: 'KYC Team Employee KYC', description: 'Internal KYC officer background & identity verification' },
   { key: 'PAYMENT_EMPLOYEE', slug: 'payment-employee', label: 'Payment Team Employee KYC', description: 'Internal Payment team employee verification' },
-  { key: 'QUERIES_EMPLOYEE', slug: 'queries-employee', label: 'Queries Team Employee KYC', description: 'Internal Queries team employee verification' }
+  { key: 'QUERIES_EMPLOYEE', slug: 'queries-employee', label: 'Queries Team Employee KYC', description: 'Internal Queries team employee verification' },
+  { key: 'KYC_QUERIES', slug: 'kyc-queries', label: 'KYC Queries', description: 'Cases transferred from Queries Team requiring KYC verification, document correction, or re-KYC' }
 ];
 
 export const PAYMENT_NAV_CATEGORIES: NavCategoryDef[] = [

@@ -34,7 +34,8 @@ import {
   ExternalLink,
   Archive,
   FileWarning,
-  FileCheck
+  FileCheck,
+  Lock
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { KycRequest, Employee } from '../../types';
@@ -125,11 +126,38 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   // Re-fetch fresh request data upon mount
   const [liveReq, setLiveReq] = useState<KycRequest | null>(request);
 
+  // Controlled sensitive identifier reveal state
+  const [unmaskedSensitive, setUnmaskedSensitive] = useState<{
+    pan?: string;
+    aadhaar?: string;
+    bankAccount?: string;
+    ifsc?: string;
+  } | null>(null);
+  const [revealingSensitive, setRevealingSensitive] = useState(false);
+
+  const handleRevealSensitive = async () => {
+    if (!liveReq?.requestId) return;
+    try {
+      setRevealingSensitive(true);
+      const res = await apiFetch<any>(`/kyc/requests/${liveReq.requestId}/reveal-sensitive`, {
+        method: 'POST'
+      });
+      if (res.success && res.data) {
+        setUnmaskedSensitive(res.data);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to reveal sensitive details.');
+    } finally {
+      setRevealingSensitive(false);
+    }
+  };
+
   useEffect(() => {
     if (request) {
       setLiveReq(request);
       setActiveDocIndex(0);
       setActiveSide('front');
+      setUnmaskedSensitive(null);
     }
   }, [request]);
 
@@ -431,39 +459,35 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   const details = liveReq.applicantDetails || {};
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 overflow-hidden">
-      <div
-        className={`flex flex-col bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl transition-all duration-200 overflow-hidden ${
-          isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-[96vw] h-[94vh]'
-        }`}
-      >
+    <div className="fixed inset-0 z-50 w-screen h-screen m-0 p-0 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+      <div className="flex flex-col w-full h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
         {/* ========================================================================= */}
         {/* TOP COMMAND BAR                                                           */}
         {/* ========================================================================= */}
-        <div className="shrink-0 flex items-center justify-between px-5 py-3.5 bg-slate-950/80 border-b border-slate-800">
+        <div className="shrink-0 flex items-center justify-between px-6 py-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="p-2.5 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+            <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div className="truncate">
               <div className="flex items-center gap-2">
-                <h2 className="font-extrabold text-white text-base tracking-tight truncate">
+                <h2 className="font-extrabold text-slate-900 dark:text-white text-base tracking-tight truncate">
                   {liveReq.applicantName}
                 </h2>
-                <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
+                <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                   {liveReq.requestId}
                 </span>
                 <Badge variant={liveReq.status === 'Approved' ? 'success' : liveReq.status === 'Rejected' ? 'danger' : 'warning'}>
                   {liveReq.status}
                 </Badge>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                <span className="font-semibold text-indigo-400">{liveReq.applicantType}</span>
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">{liveReq.applicantType}</span>
                 <span>•</span>
-                <span className="font-semibold text-amber-400">{liveReq.priority} Priority</span>
+                <span className="font-semibold text-amber-600 dark:text-amber-400">{liveReq.priority} Priority</span>
                 <span>•</span>
-                <span className="flex items-center gap-1 text-slate-400">
-                  <Clock className="w-3 h-3 text-slate-500" />
+                <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                  <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
                   {queueDuration}
                 </span>
               </div>
@@ -497,20 +521,11 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
             <button
               type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Maximize Workbench'}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-
-            <button
-              type="button"
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-300 transition-colors"
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-300 transition-colors"
               title="Close Workbench"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -520,8 +535,8 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           <div
             className={`px-5 py-2.5 text-xs font-semibold flex items-center justify-between ${
               actionFeedback.type === 'success'
-                ? 'bg-emerald-950/80 border-b border-emerald-800 text-emerald-300'
-                : 'bg-rose-950/80 border-b border-rose-800 text-rose-300'
+                ? 'bg-emerald-50 dark:bg-emerald-950/80 border-b border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                : 'bg-rose-50 dark:bg-rose-950/80 border-b border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -541,32 +556,32 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
         {/* ========================================================================= */}
         {/* THREE-PANEL CORE BODY                                                     */}
         {/* ========================================================================= */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden bg-slate-950">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-hidden bg-slate-100 dark:bg-slate-950">
           {/* ======================================================================= */}
           {/* LEFT PANEL (Col 1-3): All Uploaded Documents                            */}
           {/* ======================================================================= */}
-          <div className="lg:col-span-3 flex flex-col border-r border-slate-800 bg-slate-900/90 min-h-0">
+          <div className="lg:col-span-3 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 min-h-0">
             {/* Left Panel Header */}
-            <div className="p-3.5 border-b border-slate-800 space-y-2.5 shrink-0">
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-2.5 shrink-0">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-indigo-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   Uploaded Documents
                 </span>
-                <span className="text-[11px] font-semibold text-slate-400">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                   {documents.length} Files
                 </span>
               </div>
 
               {/* Document Search */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={docSearch}
                   onChange={e => setDocSearch(e.target.value)}
                   placeholder="Search documents..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
@@ -916,56 +931,56 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           {/* ======================================================================= */}
           {/* RIGHT PANEL (Col 9-12): Dynamic Registration Profile & KYC Actions      */}
           {/* ======================================================================= */}
-          <div className="lg:col-span-4 flex flex-col bg-slate-900 min-h-0 overflow-y-auto">
+          <div className="lg:col-span-4 flex flex-col bg-white dark:bg-slate-900 min-h-0 overflow-y-auto border-l border-slate-200 dark:border-slate-800">
             <div className="p-4 space-y-3">
               {/* Accordion 1: Personal & Contact Information */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('personal')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     Personal & Contact Information
                   </span>
                   {openSections.personal ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.personal && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Applicant / Owner Name</span>
-                        <div className="font-bold text-white mt-0.5">{details.ownerName || liveReq.applicantName}</div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Applicant / Owner Name</span>
+                        <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.ownerName || liveReq.applicantName}</div>
                       </div>
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Primary Mobile</span>
-                        <div className="font-bold text-white mt-0.5">{liveReq.phone || 'N/A'}</div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Primary Mobile</span>
+                        <div className="font-bold text-slate-900 dark:text-white mt-0.5">{liveReq.phone || 'N/A'}</div>
                       </div>
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Alternate Contact</span>
-                        <div className="text-slate-300 mt-0.5">{details.alternatePhone || details.altPhone || 'N/A'}</div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Alternate Contact</span>
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.alternatePhone || details.altPhone || 'N/A'}</div>
                       </div>
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Email Address</span>
-                        <div className="text-slate-300 mt-0.5 truncate">{liveReq.email || 'N/A'}</div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Email Address</span>
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5 truncate">{liveReq.email || 'N/A'}</div>
                       </div>
                       {details.dob && (
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Date of Birth</span>
-                          <div className="text-slate-300 mt-0.5">{details.dob}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Date of Birth</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.dob}</div>
                         </div>
                       )}
                       {details.gender && (
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Gender</span>
-                          <div className="text-slate-300 mt-0.5 capitalize">{details.gender}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Gender</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5 capitalize">{details.gender}</div>
                         </div>
                       )}
                       {details.emergencyContact && (
-                        <div className="col-span-2 pt-1 border-t border-slate-800">
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Emergency Contact</span>
-                          <div className="text-slate-300 mt-0.5">
+                        <div className="col-span-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Emergency Contact</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">
                             {typeof details.emergencyContact === 'object'
                               ? `${details.emergencyContact.name} (${details.emergencyContact.relationship}): ${details.emergencyContact.phone}`
                               : details.emergencyContact}
@@ -978,105 +993,150 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               </div>
 
               {/* Accordion 2: Address & Jurisdiction Information */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('address')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                     Address & Jurisdiction
                   </span>
                   {openSections.address ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.address && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
-                    {details.address ? (
-                      <div className="space-y-1.5 text-slate-300">
-                        {details.address.fullAddress ? (
-                          <div className="p-2 rounded-xl bg-slate-900 font-medium leading-relaxed">
-                            {details.address.fullAddress}
-                          </div>
-                        ) : null}
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <span className="text-slate-500 font-bold uppercase text-[9px]">Building / Door No</span>
-                            <div>{details.address.doorNo || details.address.buildingNo || 'N/A'}</div>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-bold uppercase text-[9px]">Street / Area</span>
-                            <div>{details.address.street || 'N/A'}</div>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-bold uppercase text-[9px]">Taluk / Division</span>
-                            <div>{details.address.taluk || details.address.division || 'N/A'}</div>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-bold uppercase text-[9px]">District / State</span>
-                            <div>
-                              {details.address.district || details.address.state
-                                ? `${details.address.district || ''}, ${details.address.state || ''}`
-                                : 'N/A'}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-bold uppercase text-[9px]">Pincode</span>
-                            <div className="font-mono font-bold text-indigo-400">
-                              {details.address.pincode || details.pincode || 'N/A'}
-                            </div>
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-2">
+                    <div className="space-y-2 text-slate-700 dark:text-slate-300">
+                      {/* Formatted Full Address / Territory */}
+                      <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                          Full Jurisdiction & Address
+                        </div>
+                        <div className="font-medium leading-relaxed text-slate-900 dark:text-slate-100">
+                          {details.address?.fullAddress ||
+                           details.territoryFormatted ||
+                           [details.address?.doorNo, details.address?.street, details.address?.division || details.address?.taluk || details.division, details.address?.district || details.district, details.address?.state || details.state, details.address?.pincode || details.pincode].filter(Boolean).join(', ') ||
+                           'Address details registered with territory'}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px]">State</span>
+                          <div className="font-semibold text-slate-900 dark:text-white">{details.state || details.address?.state || 'N/A'}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px]">District</span>
+                          <div className="font-semibold text-slate-900 dark:text-white">{details.district || details.address?.district || 'N/A'}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px]">Taluk / Division</span>
+                          <div className="font-semibold text-slate-900 dark:text-white">{details.division || details.address?.taluk || details.address?.division || 'N/A'}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 dark:text-slate-400 font-bold uppercase text-[9px]">Pincode</span>
+                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            {details.pincode || details.address?.pincode || 'N/A'}
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-slate-400">
-                        Pincode: <span className="font-mono font-bold text-white">{details.pincode || 'N/A'}</span>
+
+                      {/* Onboarding Source & Admin Attribution */}
+                      <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] space-y-1.5 mt-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Onboarding & Governance Attribution
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">Source:</span>
+                          <span className="font-semibold text-slate-900 dark:text-white">{details.registrationSource || 'Direct Registration'}</span>
+                        </div>
+                        {details.onboardingAgent && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Onboarding Agent:</span>
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                              {typeof details.onboardingAgent === 'object' ? `${details.onboardingAgent.name || details.onboardingAgent.id || ''}` : details.onboardingAgent}
+                            </span>
+                          </div>
+                        )}
+                        {details.responsibleAdmin && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Territory Sub Admin:</span>
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {typeof details.responsibleAdmin === 'object' ? `${details.responsibleAdmin.name || details.responsibleAdmin.email || ''}` : details.responsibleAdmin}
+                            </span>
+                          </div>
+                        )}
+                        {details.pincodeAdminApproval && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Pincode Admin Status:</span>
+                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              {details.pincodeAdminApproval.status || 'Approved'}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>
 
               {/* Accordion 3: Identity & Tax Verification */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('identity')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-purple-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-purple-500 dark:text-purple-400" />
                     Identity & Tax Verification
                   </span>
                   {openSections.identity ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.identity && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-3">
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
+                      <div className="flex items-center gap-1.5 text-[11px] text-purple-700 dark:text-purple-300 font-semibold">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Protected Identity Data</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRevealSensitive}
+                        disabled={revealingSensitive}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] shadow-sm disabled:opacity-50 transition-all"
+                      >
+                        <Eye className="w-3 h-3" />
+                        {revealingSensitive ? 'Revealing...' : unmaskedSensitive ? 'Unmasked (Audited)' : 'Reveal (Audit Logged)'}
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">PAN Number (Masked)</span>
-                        <div className="font-mono font-bold text-white mt-0.5">
-                          {details.panNumberMasked || '•••••9012•'}
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">PAN Number</span>
+                        <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                          {unmaskedSensitive?.pan || details.panNumberMasked || details.pan || '•••••9012•'}
                         </div>
                       </div>
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Aadhaar (Masked)</span>
-                        <div className="font-mono font-bold text-white mt-0.5">
-                          {details.aadhaarNumberMasked || '•••• •••• 8812'}
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Aadhaar Number</span>
+                        <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                          {unmaskedSensitive?.aadhaar || details.aadhaarNumberMasked || details.aadhaar || '•••• •••• 8812'}
                         </div>
                       </div>
                       {details.gst !== undefined && (
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">GST Registration</span>
-                          <div className="text-slate-300 mt-0.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">GST Registration</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">
                             {details.gst ? details.gst : details.gstStatus || 'Unregistered'}
                           </div>
                         </div>
                       )}
                       {details.msmeNumber && (
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">MSME / Udyam No</span>
-                          <div className="text-slate-300 mt-0.5">{details.msmeNumber}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">MSME / Udyam No</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.msmeNumber}</div>
                         </div>
                       )}
                     </div>
@@ -1085,49 +1145,51 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               </div>
 
               {/* Accordion 4: Category-Specific Details (Dynamic across all 9 Categories) */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('categoryDetails')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-amber-500 dark:text-amber-400" />
                     {liveReq.applicantType} Profile Details
                   </span>
                   {openSections.categoryDetails ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.categoryDetails && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-2">
                     {/* Category 1: Vendor */}
                     {liveReq.applicantType === 'Vendor' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="col-span-2">
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Business / Storefront</span>
-                          <div className="font-bold text-white mt-0.5">{details.businessName || liveReq.applicantName}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Business / Storefront</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.businessName || liveReq.applicantName}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Business Category</span>
-                          <div className="text-slate-300 mt-0.5">{details.category || 'Retail Goods'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Business Category</span>
+                          <div className="font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.category || 'Retail Goods'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Subcategory</span>
-                          <div className="text-slate-300 mt-0.5">{details.subCategory || 'General Merchandise'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Subcategory</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.subCategory || 'General Merchandise'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Operating Hours</span>
-                          <div className="text-slate-300 mt-0.5">{details.operatingHours || '9:00 AM - 9:00 PM'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Operating Hours</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.operatingHours || '9:00 AM - 9:00 PM'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Store Type</span>
-                          <div className="text-slate-300 mt-0.5">{details.storeType || 'Physical Store'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Store Type</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.storeType || 'Physical Store'}</div>
                         </div>
                         {details.onboardingAgent && (
-                          <div className="col-span-2 p-2 rounded-xl bg-indigo-950/40 border border-indigo-900/60 mt-1">
-                            <span className="text-[10px] uppercase font-bold text-indigo-300">Onboarding Agent Reference</span>
-                            <div className="font-bold text-white mt-0.5">{details.onboardingAgent.name}</div>
-                            {details.onboardingAgent.phone && (
-                              <div className="text-[11px] text-slate-400">{details.onboardingAgent.phone}</div>
+                          <div className="col-span-2 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 mt-1">
+                            <span className="text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-300">Onboarding Agent Reference</span>
+                            <div className="font-bold text-slate-900 dark:text-white mt-0.5">
+                              {typeof details.onboardingAgent === 'object' ? `${details.onboardingAgent.name || ''} (${details.onboardingAgent.agentId || details.onboardingAgent.id || ''})` : details.onboardingAgent}
+                            </div>
+                            {typeof details.onboardingAgent === 'object' && details.onboardingAgent.phone && (
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400">{details.onboardingAgent.phone}</div>
                             )}
                           </div>
                         )}
@@ -1138,29 +1200,21 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Agent' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Agent Role Tier</span>
-                          <div className="font-bold text-indigo-400 mt-0.5 capitalize">{details.roleTier || 'District Agent'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Agent Role Tier</span>
+                          <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 capitalize">{details.roleTier || 'District Agent'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Qualification</span>
-                          <div className="text-slate-300 mt-0.5">{details.qualification || 'Graduate'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Qualification</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.qualification || 'Graduate'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Experience</span>
-                          <div className="text-slate-300 mt-0.5">{details.experience || '2+ Years'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Experience</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.experience || '2+ Years'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Previous Company</span>
-                          <div className="text-slate-300 mt-0.5">{details.previousCompany || 'N/A'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Territory Scope</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.territoryFormatted || details.state || 'N/A'}</div>
                         </div>
-                        {details.vehicleDetails && (
-                          <div className="col-span-2 pt-1 border-t border-slate-800">
-                            <span className="text-[10px] uppercase font-bold text-slate-500">Vehicle Registered</span>
-                            <div className="text-slate-300 mt-0.5">
-                              {details.vehicleDetails.vehicleType} • {details.vehicleDetails.vehicleNumber || 'KA-01-AB-1234'}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
 
@@ -1168,12 +1222,12 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Manager' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Managerial Level</span>
-                          <div className="font-bold text-indigo-400 mt-0.5">Regional Manager</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Managerial Scope</span>
+                          <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.role || 'Regional Manager'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Jurisdiction</span>
-                          <div className="text-slate-300 mt-0.5">{details.jurisdiction || 'South Zone'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Jurisdiction</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.territoryFormatted || details.district || details.state || 'Assigned Territory'}</div>
                         </div>
                       </div>
                     )}
@@ -1182,12 +1236,12 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Sub Admin' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Administrative Scope</span>
-                          <div className="font-bold text-indigo-400 mt-0.5">{details.adminScope || 'District Admin'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Administrative Scope</span>
+                          <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.adminScope || 'District Admin'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Authorization Code</span>
-                          <div className="font-mono text-slate-300 mt-0.5">{details.authorizationCode || 'SUB-ADM-01'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Authorization Code</span>
+                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">{details.authorizationCode || 'SUB-ADM-01'}</div>
                         </div>
                       </div>
                     )}
@@ -1196,20 +1250,20 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Delivery Partner' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Vehicle Type</span>
-                          <div className="font-bold text-white mt-0.5">{details.vehicleType || 'Two Wheeler'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Vehicle Type</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.vehicleType || 'Two Wheeler'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Vehicle Number</span>
-                          <div className="font-mono font-bold text-indigo-400 mt-0.5">{details.vehicleNumber || 'KA-01-EV-9042'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Vehicle Number</span>
+                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.vehicleNumber || 'KA-01-EV-9042'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Driving License</span>
-                          <div className="font-mono text-slate-300 mt-0.5">{details.drivingLicense || 'KA01-2021-88912'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Driving License</span>
+                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">{details.drivingLicense || 'KA01-2021-88912'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Service Zone</span>
-                          <div className="text-slate-300 mt-0.5">{details.serviceZone || 'Bengaluru South'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Service Zone</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.serviceZone || 'Bengaluru South'}</div>
                         </div>
                       </div>
                     )}
@@ -1218,16 +1272,16 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Technician' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="col-span-2">
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Skill Trade Category</span>
-                          <div className="font-bold text-white mt-0.5">{details.skillCategory || 'Electrical & Appliance Repair'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Skill Trade Category</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.skillCategory || 'Electrical & Appliance Repair'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Trade License / ITI ID</span>
-                          <div className="font-mono text-indigo-400 mt-0.5">{details.certificationId || 'ITI-BLR-2022'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Trade License / ITI ID</span>
+                          <div className="font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">{details.certificationId || 'ITI-BLR-2022'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Service Operational Zone</span>
-                          <div className="text-slate-300 mt-0.5">{details.serviceZone || 'Central Zone'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Service Operational Zone</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.serviceZone || 'Central Zone'}</div>
                         </div>
                       </div>
                     )}
@@ -1236,20 +1290,20 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {['KYC Team Employee', 'Payment Team Employee', 'Queries Team Employee'].includes(liveReq.applicantType) && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Staff Employee ID</span>
-                          <div className="font-mono font-bold text-indigo-400 mt-0.5">{details.employeeId || liveReq.applicantId}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Staff Employee ID</span>
+                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.employeeId || liveReq.applicantId}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Department</span>
-                          <div className="font-bold text-white mt-0.5">{details.department || liveReq.applicantType}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Department</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.department || liveReq.applicantType}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Designation</span>
-                          <div className="text-slate-300 mt-0.5">{details.designation || 'Verification Specialist'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Designation</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.designation || 'Verification Specialist'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500">Work Location</span>
-                          <div className="text-slate-300 mt-0.5">{details.workLocation || 'Headquarters'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Work Location</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.workLocation || 'Headquarters'}</div>
                         </div>
                       </div>
                     )}
@@ -1258,51 +1312,53 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               </div>
 
               {/* Accordion 5: Bank & Settlement Information */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('bank')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                     Bank & Settlement Account
                   </span>
                   {openSections.bank ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.bank && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-2">
                     {details.bankDetails ? (
                       <div className="grid grid-cols-2 gap-2 text-[11px]">
                         <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-500">Account Holder</span>
-                          <div className="font-bold text-white mt-0.5">
+                          <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Account Holder</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">
                             {details.bankDetails.accountHolder || details.bankDetails.accountHolderName || liveReq.applicantName}
                           </div>
                         </div>
                         <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-500">Bank Name</span>
-                          <div className="text-slate-300 mt-0.5">{details.bankDetails.bankName || 'State Bank of India'}</div>
+                          <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Bank Name</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.bankDetails.bankName || 'State Bank of India'}</div>
                         </div>
                         <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-500">Account Number (Masked)</span>
-                          <div className="font-mono font-bold text-indigo-400 mt-0.5">
-                            {details.bankDetails.accountNumber || '••••••••7812'}
+                          <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Account Number</span>
+                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                            {unmaskedSensitive?.bankAccount || details.bankDetails.accountNumber || '••••••••7812'}
                           </div>
                         </div>
                         <div>
-                          <span className="text-[9px] uppercase font-bold text-slate-500">IFSC Code</span>
-                          <div className="font-mono text-slate-300 mt-0.5">{details.bankDetails.ifscCode || 'SBIN0001234'}</div>
+                          <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">IFSC Code</span>
+                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">
+                            {unmaskedSensitive?.ifsc || details.bankDetails.ifscCode || 'SBIN0001234'}
+                          </div>
                         </div>
                         {details.bankDetails.branchName && (
                           <div className="col-span-2">
-                            <span className="text-[9px] uppercase font-bold text-slate-500">Branch Name</span>
-                            <div className="text-slate-300 mt-0.5">{details.bankDetails.branchName}</div>
+                            <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Branch Name</span>
+                            <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.bankDetails.branchName}</div>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="text-slate-400 italic">Bank details verified via primary settlement ledger.</div>
+                      <div className="text-slate-500 dark:text-slate-400 italic">Bank details verified via primary settlement ledger.</div>
                     )}
                   </div>
                 )}

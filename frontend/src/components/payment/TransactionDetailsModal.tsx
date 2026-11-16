@@ -58,7 +58,8 @@ export const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = (
       onClose={onClose}
       title="Transaction Complete Source & Ledger Details"
       subtitle={transaction?.transactionId}
-      maxWidth="lg"
+      maxWidth="6xl"
+      fullScreen={true}
     >
       {tx && (
         <div className="space-y-4 text-xs">

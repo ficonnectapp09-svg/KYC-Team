@@ -79,9 +79,26 @@ export const PaymentManagement: React.FC = () => {
   const [showInitiateModal, setShowInitiateModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showAdjustModal, setShowAdjustModal] = useState<AgentDepositLiability | null>(null);
+  const [showPaymentLinkModal, setShowPaymentLinkModal] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorAlert, setErrorAlert] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Payment Link Generation state
+  const [paymentLinkForm, setPaymentLinkForm] = useState({
+    applicantType: 'Vendor',
+    applicantId: '',
+    applicantName: '',
+    applicantEmail: '',
+    amount: '1999',
+    purpose: 'Vendor Onboarding Subscription',
+    expiryDays: '3'
+  });
+  const [generatedLinkData, setGeneratedLinkData] = useState<any | null>(null);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [verifyingActivation, setVerifyingActivation] = useState(false);
+  const [emailStatusMsg, setEmailStatusMsg] = useState<string | null>(null);
 
   // Form states
   const [initiateForm, setInitiateForm] = useState({
@@ -292,6 +309,87 @@ export const PaymentManagement: React.FC = () => {
     }
   };
 
+  const handleGeneratePaymentLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setGeneratingLink(true);
+      setErrorAlert(null);
+      const res = await apiFetch<any>('/payments/payment-links/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          applicantType: paymentLinkForm.applicantType,
+          applicantId: paymentLinkForm.applicantId,
+          applicantName: paymentLinkForm.applicantName,
+          applicantEmail: paymentLinkForm.applicantEmail,
+          amount: parseFloat(paymentLinkForm.amount),
+          purpose: paymentLinkForm.purpose,
+          expiryDays: parseInt(paymentLinkForm.expiryDays, 10)
+        })
+      });
+      if (res.success && res.data) {
+        setGeneratedLinkData(res.data);
+        setFeedback(`Payment link generated: ${res.data.paymentUrl}`);
+      } else {
+        setErrorAlert(res.message || 'Failed to generate payment link.');
+      }
+    } catch (err: any) {
+      setErrorAlert(err.message || 'Link generation failed.');
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const handleSendPaymentEmail = async () => {
+    if (!generatedLinkData) return;
+    try {
+      setSendingEmail(true);
+      setEmailStatusMsg(null);
+      const res = await apiFetch<any>('/payments/payment-links/send-email', {
+        method: 'POST',
+        body: JSON.stringify({
+          linkId: generatedLinkData.linkId,
+          recipientEmail: paymentLinkForm.applicantEmail
+        })
+      });
+      if (res.success) {
+        setEmailStatusMsg(res.message || 'Payment link email delivered.');
+      } else {
+        setErrorAlert(res.message || 'Email delivery failed.');
+      }
+    } catch (err: any) {
+      setErrorAlert(err.message || 'Failed to send email.');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleVerifyAndActivate = async () => {
+    if (!generatedLinkData) return;
+    try {
+      setVerifyingActivation(true);
+      const res = await apiFetch<any>('/payments/payment-links/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          linkId: generatedLinkData.linkId,
+          gatewayPaymentId: `PAY-VERIF-${Date.now()}`,
+          paymentMethod: 'Razorpay UPI'
+        })
+      });
+      if (res.success) {
+        setFeedback(res.message || 'Payment confirmed and account activated!');
+        setShowPaymentLinkModal(false);
+        setGeneratedLinkData(null);
+        await loadPaymentData();
+      } else {
+        setErrorAlert(res.message || 'Verification failed.');
+      }
+    } catch (err: any) {
+      setErrorAlert(err.message || 'Activation failed.');
+    } finally {
+      setVerifyingActivation(false);
+    }
+  };
+
   const isCheckerRole = user?.role === 'overall_lead' || user?.role === 'payment_lead';
 
   const resetFilters = () => {
@@ -438,6 +536,13 @@ export const PaymentManagement: React.FC = () => {
             completedLabel="Completed / Settled"
             actions={
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowPaymentLinkModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Generate Payment Link</span>
+                </button>
                 <button
                   onClick={() => setShowDepositModal(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition-all"
@@ -1180,6 +1285,202 @@ export const PaymentManagement: React.FC = () => {
             ))}
           </div>
         )}
+      </Modal>
+
+      {/* Generate & Dispatch Payment Link Modal */}
+      <Modal
+        isOpen={showPaymentLinkModal}
+        onClose={() => {
+          setShowPaymentLinkModal(false);
+          setGeneratedLinkData(null);
+          setEmailStatusMsg(null);
+        }}
+        title="Generate Payment Link & Activate Account"
+        subtitle="Custom fee entry, SMTP email dispatch & gateway payment verification"
+        maxWidth="xl"
+      >
+        <div className="space-y-4 text-xs">
+          {!generatedLinkData ? (
+            <form onSubmit={handleGeneratePaymentLink} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Applicant Classification
+                  </label>
+                  <select
+                    value={paymentLinkForm.applicantType}
+                    onChange={e =>
+                      setPaymentLinkForm(prev => ({
+                        ...prev,
+                        applicantType: e.target.value,
+                        purpose:
+                          e.target.value === 'Vendor'
+                            ? 'Vendor Onboarding Subscription'
+                            : 'Agent Security Deposit (Refundable)',
+                        amount: e.target.value === 'Vendor' ? '1999' : '5000'
+                      }))
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white"
+                  >
+                    <option value="Vendor">Vendor (Subscription)</option>
+                    <option value="Agent">Agent (Security Deposit)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Applicant ID / Registration ID
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. REG-20261023-4545"
+                    value={paymentLinkForm.applicantId}
+                    onChange={e => setPaymentLinkForm(prev => ({ ...prev, applicantId: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Applicant Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Devil / Diya"
+                    value={paymentLinkForm.applicantName}
+                    onChange={e => setPaymentLinkForm(prev => ({ ...prev, applicantName: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Applicant Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. applicant@connectapp.in"
+                    value={paymentLinkForm.applicantEmail}
+                    onChange={e => setPaymentLinkForm(prev => ({ ...prev, applicantEmail: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Custom Amount (INR ₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="1999"
+                    value={paymentLinkForm.amount}
+                    onChange={e => setPaymentLinkForm(prev => ({ ...prev, amount: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Link Validity (Days)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    required
+                    value={paymentLinkForm.expiryDays}
+                    onChange={e => setPaymentLinkForm(prev => ({ ...prev, expiryDays: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Payment Purpose / Line Item
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={paymentLinkForm.purpose}
+                  onChange={e => setPaymentLinkForm(prev => ({ ...prev, purpose: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentLinkModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={generatingLink}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50"
+                >
+                  {generatingLink ? 'Generating Link...' : 'Create Secure Payment Link'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300 text-sm">
+                    Payment Link Active & Ready
+                  </span>
+                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-bold">
+                    {generatedLinkData.linkId}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-700 dark:text-slate-300">
+                  Amount: <strong className="text-slate-900 dark:text-white">₹{generatedLinkData.amount.toLocaleString()}</strong> | Purpose: {generatedLinkData.purpose}
+                </div>
+                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 font-mono text-[11px] select-all break-all text-indigo-600 dark:text-indigo-400">
+                  {generatedLinkData.paymentUrl}
+                </div>
+              </div>
+
+              {emailStatusMsg && (
+                <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  <span>{emailStatusMsg}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleSendPaymentEmail}
+                  disabled={sendingEmail}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 shadow-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>{sendingEmail ? 'Dispatching Email...' : 'Send Payment Email to Applicant'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyAndActivate}
+                  disabled={verifyingActivation}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 shadow-md shadow-emerald-600/20"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{verifyingActivation ? 'Activating in DB...' : 'Verify Gateway Payment & Activate Account'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

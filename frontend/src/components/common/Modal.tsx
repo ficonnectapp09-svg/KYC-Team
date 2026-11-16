@@ -8,6 +8,7 @@ interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '6xl';
+  fullScreen?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -16,7 +17,8 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   subtitle,
   children,
-  maxWidth = 'lg'
+  maxWidth = 'lg',
+  fullScreen = false
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -45,19 +47,37 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div
+      className={
+        fullScreen
+          ? 'fixed inset-0 z-50 flex items-stretch justify-stretch p-0 m-0 overflow-hidden bg-slate-950'
+          : 'fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto'
+      }
+    >
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
+      {!fullScreen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+          onClick={onClose}
+        />
+      )}
 
       {/* Modal Dialog */}
       <div
-        className={`relative w-full ${maxWidthStyles[maxWidth]} rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl transition-all my-8 max-h-[90vh] flex flex-col`}
+        className={
+          fullScreen
+            ? 'relative w-screen h-screen max-w-none max-h-none rounded-none bg-slate-50 dark:bg-slate-950 border-0 shadow-2xl transition-all my-0 flex flex-col overflow-hidden text-slate-900 dark:text-slate-100'
+            : `relative w-full ${maxWidthStyles[maxWidth]} rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl transition-all my-8 max-h-[90vh] flex flex-col`
+        }
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
+        <div
+          className={`flex items-center justify-between border-b ${
+            fullScreen
+              ? 'border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-6 py-3.5 shrink-0 shadow-sm'
+              : 'border-slate-100 dark:border-slate-800 px-6 py-4'
+          }`}
+        >
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
               {title}
@@ -77,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">
+        <div className={`px-6 py-5 overflow-y-auto flex-1 ${fullScreen ? 'p-6 bg-slate-50 dark:bg-slate-950' : ''}`}>
           {children}
         </div>
       </div>

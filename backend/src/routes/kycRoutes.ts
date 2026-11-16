@@ -3,7 +3,7 @@ import { KycController } from '../controllers/kycController';
 import { authenticateJwt } from '../middleware/authMiddleware';
 import { requireRoles } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validationMiddleware';
-import { kycVerifySchema, kycResubmitSchema } from '../validators/schemas';
+import { kycVerifySchema, kycResubmitSchema, transferredQueryActionSchema } from '../validators/schemas';
 import { Role } from '../config/constants';
 
 const router = Router();
@@ -13,7 +13,14 @@ router.use(requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.KYC_EMPLOYEE]));
 
 router.get('/categories/counts', KycController.getCategoryCounts);
 router.get('/requests', KycController.listRequests);
+router.get('/transferred-queries', KycController.listTransferredQueries);
+router.post(
+  '/transferred-queries/:id/action',
+  validateBody(transferredQueryActionSchema),
+  KycController.actionTransferredQuery
+);
 router.get('/requests/:id', KycController.getRequestById);
+router.post('/requests/:id/reveal-sensitive', KycController.revealSensitiveIdentifiers);
 router.get('/requests/:id/download-zip', KycController.downloadDocumentsZip);
 router.get('/stats', KycController.getKycStats);
 

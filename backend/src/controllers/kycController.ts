@@ -196,25 +196,43 @@ export class KycController {
 
     try {
       if (appType === ApplicantType.VENDOR) {
-        const v = await db.collection('vendors').findOne({
-          $or: [
-            { _id: applicantId },
-            { registrationId: applicantId },
-            { id: applicantId },
-            { phone: request.phone }
-          ]
-        });
+        let v: any = null;
+        const vendorQueries: any[] = [
+          { registrationId: applicantId },
+          { id: applicantId },
+          { phone: request.phone }
+        ];
+        if (mongoose.Types.ObjectId.isValid(applicantId)) {
+          vendorQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+        }
+        v = await db.collection('vendors').findOne({ $or: vendorQueries });
+        if (!v && request.applicantName) {
+          v = await db.collection('vendors').findOne({
+            $or: [
+              { businessName: request.applicantName },
+              { ownerName: request.applicantName },
+              { name: request.applicantName }
+            ]
+          });
+        }
+
         if (v) {
+          const vState = v.state || v.assignedState || '';
+          const vDistrict = v.district || v.assignedDistrict || '';
+          const vDivision = v.division || v.assignedDivision || '';
+          const vPincode = v.pincode || '';
+          const vTaluk = v.taluk || '';
+
           enriched.applicantDetails = {
             ...enriched.applicantDetails,
             businessName: v.businessName || v.storeType || enriched.applicantDetails.businessName || '',
-            ownerName: v.ownerName || v.name || enriched.applicantName,
+            ownerName: v.ownerName || v.name || v.contactPerson || enriched.applicantName,
             phone: v.phone || enriched.phone,
-            alternatePhone: v.alternatePhone || '',
+            alternatePhone: v.alternatePhone || 'N/A',
             email: v.email || enriched.email,
-            category: v.category || '',
-            subCategory: v.subCategory || v.subcategory || '',
-            storeType: v.storeType || '',
+            category: v.category || v.storeType || 'Services',
+            subCategory: v.subCategory || v.subcategory || v.category || '',
+            storeType: v.storeType || v.category || '',
             operatingHours: v.operatingHours || v.workingDays || '9:00 AM - 9:00 PM',
             website: v.website || '',
             companyRegNo: v.companyRegNo || v.cin || '',
@@ -222,14 +240,20 @@ export class KycController {
             gstStatus: v.gstStatus || (v.gst ? 'Registered' : 'Unregistered'),
             msmeStatus: v.msmeStatus || (v.msmeNumber ? 'Registered' : 'Not Registered'),
             msmeNumber: v.msmeNumber || '',
+            state: vState,
+            district: vDistrict,
+            division: vDivision,
+            taluk: vTaluk,
+            pincode: vPincode,
+            territoryFormatted: [vDivision, vDistrict, vState, vPincode ? `(${vPincode})` : ''].filter(Boolean).join(', ') || vState || 'Not Provided',
             address: {
               doorNo: v.buildingNo || v.doorNo || '',
               street: v.streetName || v.street || '',
-              village: v.village || v.locality || '',
-              taluk: v.taluk || '',
-              district: v.district || '',
-              state: v.state || '',
-              pincode: v.pincode || '',
+              village: v.postOffice || v.village || v.locality || '',
+              taluk: vTaluk,
+              district: vDistrict,
+              state: vState,
+              pincode: vPincode,
               fullAddress: v.location?.address || v.address || ''
             },
             bankDetails: v.bankDetails || {
@@ -240,30 +264,54 @@ export class KycController {
               branchName: v.branchName || 'Central Branch',
               swiftCode: v.swiftCode || ''
             },
+            registrationSource: v.registrationSource || v.createdVia || v.joiningType || (v.onboardingAgent || v.agentName ? 'Agent Onboarding' : 'Direct Registration'),
             onboardingAgent: v.onboardingAgent || (v.agentName ? {
+              id: v.agentRegistrationId || v.agentId || '',
               name: v.agentName,
               phone: v.onboardingAgentPhone || '',
               role: v.onboardingAgentRole || 'Agent'
             } : null),
+            responsibleAdmin: v.responsibleAdmin || (v.approvedByName ? {
+              id: v.approvedById || v.responsibleAdminId || '',
+              name: v.approvedByName || v.responsibleAdminName || '',
+              phone: v.responsibleAdminPhone || '',
+              role: v.approvedByRole || v.responsibleAdminRole || 'Admin',
+              pincode: vPincode
+            } : null),
+            pincodeAdminApproval: v.pincodeAdminApproval || null,
             panNumberMasked: v.panNumber ? maskPan(String(v.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••9012•'),
             aadhaarNumberMasked: v.aadhaarNumber ? maskAadhaar(String(v.aadhaarNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 8812')
           };
         }
       } else if (appType === ApplicantType.AGENT) {
-        const a = await db.collection('agents').findOne({
-          $or: [
-            { _id: applicantId },
-            { registrationId: applicantId },
-            { id: applicantId },
-            { phone: request.phone }
-          ]
-        });
+        let a: any = null;
+        const agentQueries: any[] = [
+          { registrationId: applicantId },
+          { id: applicantId },
+          { phone: request.phone },
+          { mobile: request.phone }
+        ];
+        if (mongoose.Types.ObjectId.isValid(applicantId)) {
+          agentQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+        }
+        a = await db.collection('agents').findOne({ $or: agentQueries });
+        if (!a && request.applicantName) {
+          a = await db.collection('agents').findOne({ name: request.applicantName });
+        }
+
         if (a) {
+          const rawTerr = a.territory || a.assignedTerritory || {};
+          const aState = typeof rawTerr === 'object' ? (rawTerr.state || a.assignedArea || a.state || 'Tamil Nadu') : String(rawTerr);
+          const aDistrict = typeof rawTerr === 'object' ? (rawTerr.district || a.district || '') : '';
+          const aDivision = typeof rawTerr === 'object' ? (rawTerr.division || a.division || '') : '';
+          const aPincode = typeof rawTerr === 'object' ? (rawTerr.pincode || a.pincode || '') : '';
+          const territoryFormatted = [aDivision, aDistrict, aState, aPincode ? `(${aPincode})` : ''].filter(Boolean).join(', ') || aState || 'Not Provided';
+
           enriched.applicantDetails = {
             ...enriched.applicantDetails,
             name: a.name || enriched.applicantName,
             phone: a.phone || a.mobile || enriched.phone,
-            altPhone: a.altPhone || a.alternateMobile || '',
+            altPhone: a.altPhone || a.alternateMobile || 'N/A',
             email: a.email || enriched.email,
             dob: a.dob ? new Date(a.dob).toLocaleDateString() : '',
             gender: a.gender || '',
@@ -271,7 +319,17 @@ export class KycController {
             qualification: a.qualification || '',
             experience: a.experience || '',
             previousCompany: a.previousCompany || '',
-            territory: a.territory || a.assignedTerritory || {},
+            state: aState,
+            district: aDistrict,
+            division: aDivision,
+            pincode: aPincode,
+            territoryFormatted,
+            territory: {
+              state: aState,
+              district: aDistrict,
+              division: aDivision,
+              pincode: aPincode
+            },
             vehicleDetails: a.vehicleDetails || {
               vehicleType: a.vehicleType || 'Two Wheeler',
               vehicleNumber: a.vehicleNumber || 'KA-01-AB-1234'
@@ -282,9 +340,9 @@ export class KycController {
               locality: a.locality || '',
               postOffice: a.postOffice || '',
               taluk: a.taluk || '',
-              district: a.district || '',
-              state: a.state || '',
-              pincode: a.pincode || '',
+              district: aDistrict,
+              state: aState,
+              pincode: aPincode,
               fullAddress: a.fullAddress || ''
             },
             bankDetails: a.bankDetails || {
@@ -294,13 +352,83 @@ export class KycController {
               ifscCode: a.ifscCode || 'HDFC0001423',
               branchName: a.branchName || 'Main Branch'
             },
+            registrationSource: 'Direct Registration',
+            adminApprovedBy: a.adminApprovedBy || '',
+            adminApprovedByRole: a.adminApprovedByRole || '',
+            adminApprovedAt: a.adminApprovedAt || null,
             panNumberMasked: a.panNumber ? maskPan(String(a.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••4412•'),
             aadhaarNumberMasked: a.aadhaarNumber ? maskAadhaar(String(a.aadhaarNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 6543')
           };
         }
+      } else if (appType === ApplicantType.MANAGER) {
+        let m: any = null;
+        const mgrQueries: any[] = [
+          { id: applicantId },
+          { managerId: applicantId },
+          { email: enriched.email },
+          { phone: request.phone },
+          { mobile: request.phone }
+        ];
+        if (mongoose.Types.ObjectId.isValid(applicantId)) {
+          mgrQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+        }
+        m = await db.collection('managers').findOne({ $or: mgrQueries });
+        if (m) {
+          const mState = m.assignedState || m.state || 'Tamil Nadu';
+          const mDistrict = m.assignedDistrict || m.district || '';
+          const mDivision = m.assignedDivision || m.division || '';
+          const mPincode = m.assignedPincode || m.pincode || '';
+
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            name: m.name || enriched.applicantName,
+            phone: m.phone || m.mobile || enriched.phone,
+            altPhone: m.altPhone || 'N/A',
+            email: m.email || enriched.email,
+            dob: m.dob ? new Date(m.dob).toLocaleDateString() : '',
+            gender: m.gender || '',
+            roleTier: m.role || m.level || 'Manager',
+            state: mState,
+            district: mDistrict,
+            division: mDivision,
+            pincode: mPincode,
+            territoryFormatted: [mDivision, mDistrict, mState, mPincode ? `(${mPincode})` : ''].filter(Boolean).join(', ') || mState || 'Not Provided',
+            address: m.address || '',
+            subAdminApprovedBy: m.subAdminApprovedBy || m.adminApprovedBy || '',
+            subAdminApprovedByRole: m.subAdminApprovedByRole || m.adminApprovedByRole || 'Sub Admin',
+            subAdminApprovedAt: m.subAdminApprovedAt || m.adminApprovedAt || null,
+            registrationSource: m.requestedBy ? 'Sub Admin Onboarding' : 'Direct Registration',
+            panNumberMasked: m.documents?.panNumber ? maskPan(String(m.documents.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••5512•'),
+            aadhaarNumberMasked: m.documents?.aadharNumber ? maskAadhaar(String(m.documents.aadharNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 9921')
+          };
+        }
+      } else if (appType === ApplicantType.CUSTOMER) {
+        const c = await db.collection('customers').findOne({
+          $or: [
+            { customerId: applicantId },
+            { registrationId: applicantId },
+            { email: enriched.email },
+            { phone: enriched.phone },
+            { mobile: enriched.phone }
+          ]
+        });
+        if (c) {
+          enriched.applicantDetails = {
+            ...enriched.applicantDetails,
+            name: c.name || c.customerName || enriched.applicantName,
+            phone: c.phone || c.mobile || enriched.phone,
+            email: c.email || enriched.email,
+            customerId: c.customerId || c.registrationId || applicantId,
+            registrationSource: 'Direct Registration'
+          };
+        }
       } else if (appType === ApplicantType.SUB_ADMIN) {
-        const sa = await db.collection('admins').findOne({
-          $or: [{ _id: applicantId }, { adminId: applicantId }, { email: enriched.email }]
+        const sa = await db.collection('users').findOne({
+          $or: [
+            { email: enriched.email },
+            { phone: enriched.phone },
+            { role: { $regex: 'admin', $options: 'i' } }
+          ]
         });
         if (sa) {
           enriched.applicantDetails = {
@@ -311,10 +439,11 @@ export class KycController {
             adminScope: sa.adminScope || sa.role || enriched.applicantDetails.adminScope || 'District Admin',
             jurisdiction: sa.assignedJurisdiction || sa.jurisdiction || enriched.applicantDetails.jurisdiction,
             authorizationCode: sa.authorizationCode || enriched.applicantDetails.authorizationCode,
-            assignedState: sa.assignedState || '',
-            assignedDistrict: sa.assignedDistrict || '',
-            assignedDivision: sa.assignedDivision || '',
-            assignedPincode: sa.assignedPincode || '',
+            assignedState: sa.assignedState || sa.state || '',
+            assignedDistrict: sa.assignedDistrict || sa.district || '',
+            assignedDivision: sa.assignedDivision || sa.division || '',
+            assignedPincode: sa.assignedPincode || sa.pincode || '',
+            territoryFormatted: [sa.assignedDivision, sa.assignedDistrict, sa.assignedState, sa.assignedPincode ? `(${sa.assignedPincode})` : ''].filter(Boolean).join(', ') || sa.assignedState || 'Not Provided',
             bankDetails: sa.bankDetails || {}
           };
         }
@@ -1086,6 +1215,221 @@ export class KycController {
           avgVerificationHours,
           employeeWorkload
         }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Controlled Reveal of sensitive credentials (PAN, Aadhaar, Bank Details) for authorized KYC staff with audit logging
+   */
+  static async revealSensitiveIdentifiers(req: Request, res: Response): Promise<any> {
+    try {
+      const { id } = req.params;
+      const currentUser = req.user!;
+      const kycRequest = await KycRequest.findOne(buildIdFilter('requestId', id));
+      if (!kycRequest) {
+        return res.status(404).json({ success: false, message: 'KYC Request not found.' });
+      }
+
+      const db = mongoose.connection.db;
+      let rawPan = '';
+      let rawAadhaar = '';
+      let rawAccountNumber = '';
+      let rawIfsc = '';
+
+      if (db) {
+        const applicantId = kycRequest.applicantId;
+        if (kycRequest.applicantType === ApplicantType.VENDOR) {
+          const vQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }, { phone: kycRequest.phone }];
+          if (mongoose.Types.ObjectId.isValid(applicantId)) {
+            vQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+          }
+          const v = await db.collection('vendors').findOne({ $or: vQueries });
+          if (v) {
+            rawPan = v.panNumber || '';
+            rawAadhaar = v.aadhaarNumber || '';
+            rawAccountNumber = v.bankDetails?.accountNumber || v.accountNumber || '';
+            rawIfsc = v.bankDetails?.ifscCode || v.ifscCode || '';
+          }
+        } else if (kycRequest.applicantType === ApplicantType.AGENT) {
+          const aQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }, { phone: kycRequest.phone }, { mobile: kycRequest.phone }];
+          if (mongoose.Types.ObjectId.isValid(applicantId)) {
+            aQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+          }
+          const a = await db.collection('agents').findOne({ $or: aQueries });
+          if (a) {
+            rawPan = a.panNumber || '';
+            rawAadhaar = a.aadhaarNumber || '';
+            rawAccountNumber = a.bankDetails?.accountNumber || '';
+            rawIfsc = a.bankDetails?.ifscCode || '';
+          }
+        } else if (kycRequest.applicantType === ApplicantType.MANAGER) {
+          const m = await db.collection('managers').findOne({
+            $or: [{ id: applicantId }, { managerId: applicantId }, { phone: kycRequest.phone }, { mobile: kycRequest.phone }]
+          });
+          if (m) {
+            rawPan = m.documents?.panNumber || '';
+            rawAadhaar = m.documents?.aadharNumber || '';
+          }
+        }
+      }
+
+      await logAudit(
+        req,
+        'SENSITIVE_DATA_REVEALED',
+        'KYC',
+        kycRequest.requestId,
+        `${currentUser.name} (${currentUser.role}) revealed unmasked PAN/Aadhaar/Bank credentials for verification.`
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          pan: rawPan || kycRequest.applicantDetails?.panNumber || 'Available in Verified Document Preview',
+          panNumber: rawPan || kycRequest.applicantDetails?.panNumber || 'Available in Verified Document Preview',
+          aadhaar: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
+          aadhaarNumber: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
+          bankAccount: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
+          accountNumber: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
+          ifsc: rawIfsc || kycRequest.applicantDetails?.bankDetails?.ifscCode || 'Available in Verified Document Preview',
+          ifscCode: rawIfsc || kycRequest.applicantDetails?.bankDetails?.ifscCode || 'Available in Verified Document Preview',
+          revealedBy: currentUser.name,
+          revealedAt: new Date().toISOString()
+        }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Dedicated tab: List support queries transferred from Queries Team to KYC Team
+   */
+  static async listTransferredQueries(req: Request, res: Response): Promise<any> {
+    try {
+      const { status, priority, search, page = '1', limit = '20' } = req.query;
+      const { QueryTicket } = await import('../models/QueryTicket');
+
+      const filter: any = {
+        currentDepartment: Department.KYC,
+        'transferHistory.0': { $exists: true }
+      };
+
+      if (status && status !== 'All') filter.status = status;
+      if (priority && priority !== 'All') filter.priority = priority;
+      if (search) {
+        filter.$or = [
+          { queryId: { $regex: search, $options: 'i' } },
+          { userName: { $regex: search, $options: 'i' } },
+          { subject: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const p = Math.max(1, parseInt(page as string, 10) || 1);
+      const l = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
+
+      const [tickets, total] = await Promise.all([
+        QueryTicket.find(filter)
+          .sort({ 'transferHistory.transferredAt': -1, updatedAt: -1 })
+          .skip((p - 1) * l)
+          .limit(l)
+          .lean(),
+        QueryTicket.countDocuments(filter)
+      ]);
+
+      return res.json({
+        success: true,
+        data: tickets,
+        total,
+        page: p,
+        limit: l,
+        totalPages: Math.ceil(total / l)
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Handle actions on a transferred query (Re-KYC request, Status update, Transfer back to Queries Team)
+   */
+  static async actionTransferredQuery(req: Request, res: Response): Promise<any> {
+    try {
+      const { id } = req.params;
+      const { action, status, notes, targetDepartment } = req.body;
+      const currentUser = req.user!;
+      const { QueryTicket } = await import('../models/QueryTicket');
+
+      const ticket = await QueryTicket.findOne(buildIdFilter('queryId', id));
+      if (!ticket) {
+        return res.status(404).json({ success: false, message: 'Query ticket not found.' });
+      }
+
+      if (action === 'REQUEST_REKYC') {
+        ticket.status = 'In Progress' as any;
+        ticket.internalNotes.push({
+          noteId: generateId('NOTE'),
+          authorId: currentUser.employeeId,
+          authorName: currentUser.name,
+          department: Department.KYC,
+          note: `[RE-KYC REQUESTED]: ${notes}`,
+          isDepartmentPrivate: false,
+          timestamp: new Date()
+        });
+        ticket.conversation.push({
+          messageId: generateId('MSG'),
+          senderId: currentUser.employeeId,
+          senderName: `${currentUser.name} (KYC Team)`,
+          senderRole: currentUser.role,
+          message: `KYC Team has reviewed your case. Action Required: Re-KYC / document correction. Details: ${notes}`,
+          timestamp: new Date()
+        });
+      } else if (action === 'TRANSFER_BACK') {
+        const destDept = targetDepartment || Department.QUERIES;
+        ticket.currentDepartment = destDept;
+        if (!ticket.sharedDepartments.includes(destDept)) {
+          ticket.sharedDepartments.push(destDept);
+        }
+        ticket.transferHistory.push({
+          fromDepartment: Department.KYC,
+          toDepartment: destDept,
+          transferredByUserId: currentUser.employeeId,
+          transferredByName: currentUser.name,
+          reason: notes || 'Returned from KYC Team with verification resolution.',
+          transferredAt: new Date()
+        });
+      } else if (action === 'RESOLVE') {
+        ticket.status = 'Resolved' as any;
+        ticket.resolution = {
+          resolvedByUserId: currentUser.employeeId,
+          resolvedByName: currentUser.name,
+          resolvedByRole: currentUser.role,
+          resolvedByDepartment: 'KYC Team',
+          resolvedAt: new Date(),
+          resolutionNotes: notes || 'Resolved by KYC Team.'
+        };
+      } else if (action === 'UPDATE_STATUS' && status) {
+        ticket.status = status as any;
+      }
+
+      ticket.lastUpdated = new Date();
+      await ticket.save();
+
+      await logAudit(
+        req,
+        'KYC_QUERY_ACTION',
+        'KYC',
+        ticket.queryId,
+        `KYC Team action: ${action} on ticket ${ticket.queryId}. Notes: ${notes || 'N/A'}`
+      );
+
+      return res.json({
+        success: true,
+        message: 'Query updated successfully.',
+        data: ticket
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

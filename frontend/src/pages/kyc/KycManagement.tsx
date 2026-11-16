@@ -80,10 +80,32 @@ export const KycManagement: React.FC = () => {
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Dedicated KYC Queries transferred from Queries Team
+  const [transferredQueries, setTransferredQueries] = useState<any[]>([]);
+  const [selectedTransferredQuery, setSelectedTransferredQuery] = useState<any | null>(null);
+  const [transferredAction, setTransferredAction] = useState<'RE_KYC_REQUESTED' | 'IN_PROGRESS' | 'RESOLVED' | 'TRANSFER_BACK_TO_QUERIES'>('IN_PROGRESS');
+  const [transferredNotes, setTransferredNotes] = useState('');
+  const [submittingTransferredAction, setSubmittingTransferredAction] = useState(false);
+
   const loadData = async (targetPage = page) => {
     try {
       setLoading(true);
       setLoadError(null);
+
+      // Handle dedicated KYC Queries Tab (Transferred from Queries Team)
+      if (activeCategory.key === 'KYC_QUERIES') {
+        const tRes = await apiFetch<any>('/kyc/transferred-queries');
+        if (tRes.success) {
+          setTransferredQueries(tRes.data || []);
+          setSummary(tRes.summary || {});
+          setTotal(tRes.count ?? (tRes.data || []).length);
+          setTotalPages(1);
+        } else {
+          setLoadError(tRes.message || 'Failed to load transferred KYC queries.');
+        }
+        return;
+      }
+
       const query = new URLSearchParams();
       query.append('category', activeCategory.key);
       query.append('page', String(targetPage));
@@ -122,6 +144,29 @@ export const KycManagement: React.FC = () => {
       setLoadError(err?.message || 'Unable to load KYC requests.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleActionTransferredQuery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTransferredQuery) return;
+    try {
+      setSubmittingTransferredAction(true);
+      const res = await apiFetch(`/kyc/transferred-queries/${selectedTransferredQuery.queryId}/action`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: transferredAction,
+          notes: transferredNotes
+        })
+      });
+      setFeedbackMsg(res.message || 'Transferred query action recorded successfully.');
+      setSelectedTransferredQuery(null);
+      setTransferredNotes('');
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Action failed.');
+    } finally {
+      setSubmittingTransferredAction(false);
     }
   };
 
@@ -401,8 +446,102 @@ export const KycManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Role-Specific Table */}
-      {loading ? (
+      {/* Dedicated Transferred KYC Queries Table */}
+      {activeCategory.key === 'KYC_QUERIES' ? (
+        loading ? (
+          <div className="flex justify-center p-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+          </div>
+        ) : transferredQueries.length === 0 ? (
+          <EmptyState
+            title="No Transferred KYC Queries"
+            description="There are currently no cases transferred from the Queries Team to KYC operations."
+            icon={ShieldCheck}
+          />
+        ) : (
+          <div className="overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <th className="py-3.5 px-4">Query ID</th>
+                    <th className="py-3.5 px-4">User / Applicant</th>
+                    <th className="py-3.5 px-4">Role & Category</th>
+                    <th className="py-3.5 px-4">Subject & Description</th>
+                    <th className="py-3.5 px-4">Transferred From</th>
+                    <th className="py-3.5 px-4">Transfer Reason</th>
+                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-5 text-right">Process Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                  {transferredQueries.map((q: any) => (
+                    <tr key={q._id || q.queryId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        {q.queryId}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-900 dark:text-white">{q.userName || 'Anonymous User'}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{q.userPhone || q.userEmail || 'No contact'}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {q.userType || 'Customer'}
+                        </span>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{q.category}</div>
+                      </td>
+                      <td className="py-3.5 px-4 max-w-xs">
+                        <div className="font-semibold text-slate-900 dark:text-white truncate">{q.subject}</div>
+                        <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{q.description}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-medium text-slate-800 dark:text-slate-200">
+                          {q.transferredBy?.name || 'Queries Team'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {q.transferredAt ? new Date(q.transferredAt).toLocaleString() : 'Transferred'}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 max-w-xs">
+                        <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-200">
+                          {q.transferReason || 'Document verification / correction required'}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <Badge
+                          variant={
+                            q.status === 'Resolved' || q.status === 'Closed'
+                              ? 'success'
+                              : q.status === 'In Progress'
+                              ? 'info'
+                              : 'warning'
+                          }
+                        >
+                          {q.status}
+                        </Badge>
+                      </td>
+                      <td className="py-3.5 px-5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTransferredQuery(q);
+                            setTransferredAction('IN_PROGRESS');
+                            setTransferredNotes('');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Process KYC Query</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      ) : loading ? (
         <div className="flex justify-center p-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
         </div>
@@ -747,6 +886,79 @@ export const KycManagement: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Transferred KYC Query Processing Modal */}
+      <Modal
+        isOpen={!!selectedTransferredQuery}
+        onClose={() => setSelectedTransferredQuery(null)}
+        title={`Process Transferred KYC Query: ${selectedTransferredQuery?.queryId}`}
+        subtitle={`${selectedTransferredQuery?.userName} (${selectedTransferredQuery?.userType})`}
+        maxWidth="lg"
+      >
+        {selectedTransferredQuery && (
+          <form onSubmit={handleActionTransferredQuery} className="space-y-4 text-xs">
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+              <div className="font-bold text-slate-900 dark:text-white text-sm">
+                {selectedTransferredQuery.subject}
+              </div>
+              <div className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                {selectedTransferredQuery.description}
+              </div>
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Transferred from: <strong>{selectedTransferredQuery.transferredBy?.name || 'Queries Team'}</strong></span>
+                <span>Reason: <strong className="text-amber-600 dark:text-amber-400">{selectedTransferredQuery.transferReason || 'Document verification'}</strong></span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Select KYC Action
+              </label>
+              <select
+                value={transferredAction}
+                onChange={e => setTransferredAction(e.target.value as any)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="IN_PROGRESS">Mark In Progress (Under KYC Verification)</option>
+                <option value="RE_KYC_REQUESTED">Trigger Re-KYC Verification for User</option>
+                <option value="RESOLVED">Mark Resolved (KYC Verification Complete)</option>
+                <option value="TRANSFER_BACK_TO_QUERIES">Transfer Back to Queries Team</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                KYC Officer Notes / Response Instructions
+              </label>
+              <textarea
+                value={transferredNotes}
+                onChange={e => setTransferredNotes(e.target.value)}
+                placeholder="Enter details on verification outcome or why this case is transferred back..."
+                rows={4}
+                required
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTransferredQuery(null)}
+                className="px-4 py-2 rounded-xl font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submittingTransferredAction}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50"
+              >
+                {submittingTransferredAction ? 'Processing...' : 'Confirm Action'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* Redesigned 3-Panel Registration-Based KYC Verification Workbench */}

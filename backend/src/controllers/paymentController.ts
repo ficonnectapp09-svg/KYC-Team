@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { PaymentTransaction } from '../models/PaymentTransaction';
 import { AgentDepositLiability } from '../models/AgentDepositLiability';
 import { FinancialApproval } from '../models/FinancialApproval';
@@ -576,6 +577,284 @@ export class PaymentController {
         success: true,
         message: 'Deposit liability adjusted successfully.',
         data: liability
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Enter payment amount and generate a secure payment link for an approved Vendor or Agent application
+   */
+  static async generatePaymentLink(req: Request, res: Response): Promise<any> {
+    try {
+      const {
+        applicantId,
+        applicantName,
+        applicantType,
+        email,
+        phone,
+        amount,
+        purpose,
+        businessName,
+        expiryDays = 7
+      } = req.body;
+      const currentUser = req.user!;
+
+      const isVendor = String(applicantType).toUpperCase().includes('VENDOR');
+      const isAgent = String(applicantType).toUpperCase().includes('AGENT');
+
+      if (!isVendor && !isAgent) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment links can only be issued for Vendor (Subscription) or Agent (Refundable Deposit) applications.'
+        });
+      }
+
+      const linkId = generateId('PAY-LNK');
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5175';
+      const paymentUrl = `${clientUrl}/pay/${linkId}?applicantId=${encodeURIComponent(applicantId)}&token=${Buffer.from(linkId).toString('base64')}`;
+
+      // Create linked pending transaction record in PaymentTransaction
+      const transactionId = generateId('TXN-LNK');
+      const numAmount = Number(amount);
+      const classification = isAgent ? FinancialClassification.LIABILITY : FinancialClassification.INCOME;
+
+      const transaction = await PaymentTransaction.create({
+        transactionId,
+        referenceId: linkId,
+        transactionType: isAgent ? 'Agent Initial Deposit Payment Link' : 'Vendor Subscription Payment Link',
+        financialClassification: classification,
+        fromParty: {
+          id: applicantId,
+          name: applicantName,
+          type: isAgent ? 'Agent' : 'Vendor'
+        },
+        toParty: {
+          id: 'CONNECT_SYSTEM',
+          name: 'Connect App Centralized Platform',
+          type: 'Platform'
+        },
+        amount: numAmount,
+        grossAmount: numAmount,
+        finalAmount: numAmount,
+        paymentMethod: 'Online Payment Link',
+        status: 'PENDING',
+        handledByEmployeeId: currentUser.employeeId,
+        handledByEmployeeName: currentUser.name,
+        department: 'Payment Team',
+        transactionDate: new Date(),
+        notes: `Payment link ${linkId} generated for ${purpose}. Expiry: ${expiryDays} days.`
+      });
+
+      await logAudit(
+        req,
+        'PAYMENT_LINK_GENERATED',
+        'PAYMENT',
+        linkId,
+        `Payment Team member ${currentUser.name} issued payment link ${linkId} of ₹${numAmount} for ${applicantName} (${applicantId}).`
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'Payment link generated successfully.',
+        data: {
+          linkId,
+          transactionId,
+          applicantId,
+          applicantName,
+          applicantType,
+          email,
+          phone,
+          amount: numAmount,
+          purpose,
+          paymentUrl,
+          expiryDays,
+          status: 'PENDING',
+          createdAt: new Date().toISOString()
+        }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Dispatch payment link email to the applicant's registered email
+   */
+  static async sendPaymentEmail(req: Request, res: Response): Promise<any> {
+    try {
+      const {
+        linkId,
+        recipientEmail,
+        applicantName,
+        applicantType,
+        businessName,
+        amount,
+        purpose,
+        paymentUrl,
+        customNote
+      } = req.body;
+      const currentUser = req.user!;
+
+      const { EmailService } = await import('../services/emailService');
+      const emailResult = await EmailService.sendPaymentLinkEmail({
+        recipientEmail,
+        applicantName: applicantName || 'Applicant',
+        applicantType: applicantType || 'Onboarding',
+        businessName,
+        amount: Number(amount),
+        paymentUrl: paymentUrl || `${process.env.CLIENT_URL || 'http://localhost:5175'}/pay/${linkId}`,
+        linkId,
+        purpose: purpose || 'Onboarding Completion',
+        customNote
+      });
+
+      await logAudit(
+        req,
+        'PAYMENT_EMAIL_SENT',
+        'PAYMENT',
+        linkId,
+        `Payment email for link ${linkId} dispatched to ${recipientEmail} by ${currentUser.name}. Result: ${emailResult.message}`
+      );
+
+      return res.json({
+        success: true,
+        message: emailResult.message,
+        data: emailResult
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Verify completed payment and activate Vendor / Agent account
+   */
+  static async verifyPaymentAndActivate(req: Request, res: Response): Promise<any> {
+    try {
+      const { linkId, gatewayPaymentId, paymentMethod = 'Online Gateway' } = req.body;
+      const currentUser = req.user!;
+
+      const transaction = await PaymentTransaction.findOne({ referenceId: linkId });
+      if (!transaction) {
+        return res.status(404).json({ success: false, message: 'Payment link reference not found.' });
+      }
+
+      // Update transaction to COMPLETED
+      transaction.status = 'COMPLETED';
+      transaction.gatewayReference = gatewayPaymentId || `GATEWAY-${Date.now()}`;
+      transaction.paymentMethod = paymentMethod;
+      transaction.notes = `Payment verified via gateway on ${new Date().toISOString()} by ${currentUser.name}.`;
+      await transaction.save();
+
+      const applicantId = transaction.fromParty.id;
+      const applicantType = transaction.fromParty.type;
+      const db = mongoose.connection.db;
+
+      let activationDetails = { activated: false, collection: '', recordId: applicantId };
+
+      if (db) {
+        if (applicantType === 'Vendor') {
+          const vQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }];
+          if (mongoose.Types.ObjectId.isValid(applicantId)) {
+            vQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+          }
+
+          const vRes = await db.collection('vendors').updateOne(
+            { $or: vQueries },
+            {
+              $set: {
+                status: 'Active',
+                isApproved: true,
+                kycStatus: 'Verified',
+                paymentStatus: 'Completed',
+                subscriptionPaid: true,
+                activatedAt: new Date(),
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'PAYMENT_VERIFIED_ACTIVATED',
+                  status: 'Active',
+                  reviewedBy: currentUser.name,
+                  reviewedById: currentUser.employeeId,
+                  reviewerRole: currentUser.role,
+                  timestamp: new Date(),
+                  remarks: `Payment link ${linkId} verified (₹${transaction.finalAmount}). Dashboard access activated.`
+                }
+              } as any
+            }
+          );
+          activationDetails = { activated: vRes.matchedCount > 0, collection: 'vendors', recordId: applicantId };
+        } else if (applicantType === 'Agent') {
+          const aQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }];
+          if (mongoose.Types.ObjectId.isValid(applicantId)) {
+            aQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+          }
+
+          const aRes = await db.collection('agents').updateOne(
+            { $or: aQueries },
+            {
+              $set: {
+                status: 'Active',
+                isApproved: true,
+                kycStatus: 'Verified',
+                registrationFeePaid: true,
+                adminApprovalStatus: 'approved',
+                activatedAt: new Date(),
+                updatedAt: new Date()
+              },
+              $push: {
+                reviewHistory: {
+                  action: 'DEPOSIT_VERIFIED_ACTIVATED',
+                  status: 'Active',
+                  reviewerName: currentUser.name,
+                  reviewerId: currentUser.employeeId,
+                  reviewerRole: currentUser.role,
+                  reviewedAt: new Date(),
+                  timestamp: new Date(),
+                  remarks: `Refundable deposit link ${linkId} verified (₹${transaction.finalAmount}). Agent dashboard activated.`
+                }
+              } as any
+            }
+          );
+
+          // Also record Agent Deposit Liability
+          const liabilityId = generateId('LIA-AGT');
+          await AgentDepositLiability.create({
+            liabilityId,
+            agentId: applicantId,
+            agentName: transaction.fromParty.name,
+            agentEmail: '',
+            depositAmount: transaction.finalAmount,
+            currentOutstandingBalance: transaction.finalAmount,
+            status: 'HELD',
+            paymentMethod,
+            gatewayReference: gatewayPaymentId || `GATEWAY-${Date.now()}`,
+            receivedDate: new Date(),
+            notes: `Auto-recorded liability from verified payment link ${linkId}.`
+          });
+
+          activationDetails = { activated: aRes.matchedCount > 0, collection: 'agents', recordId: applicantId };
+        }
+      }
+
+      await logAudit(
+        req,
+        'PAYMENT_VERIFIED_ACTIVATED',
+        'PAYMENT',
+        linkId,
+        `Payment verified for ${transaction.fromParty.name} (${applicantId}). Role: ${applicantType}. Account activated in database.`
+      );
+
+      return res.json({
+        success: true,
+        message: `Payment confirmed. ${applicantType} account successfully activated with full dashboard access.`,
+        data: {
+          transaction,
+          activationDetails
+        }
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

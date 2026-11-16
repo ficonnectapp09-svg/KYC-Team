@@ -32,5 +32,22 @@ router.post(
   PaymentController.adjustAgentDeposit
 );
 
+// Payment Links & Gateway Verification (Vendor Onboarding / Agent Security Deposit)
+router.post(
+  '/payment-links/generate',
+  requireRoles([Role.OVERALL_LEAD, Role.PAYMENT_LEAD, Role.PAYMENT_EMPLOYEE]),
+  PaymentController.generatePaymentLink
+);
+router.post(
+  '/payment-links/send-email',
+  requireRoles([Role.OVERALL_LEAD, Role.PAYMENT_LEAD, Role.PAYMENT_EMPLOYEE]),
+  PaymentController.sendPaymentEmail
+);
+router.post(
+  '/payment-links/verify',
+  requireRoles([Role.OVERALL_LEAD, Role.PAYMENT_LEAD, Role.PAYMENT_EMPLOYEE]),
+  PaymentController.verifyPaymentAndActivate
+);
+
 export default router;
 

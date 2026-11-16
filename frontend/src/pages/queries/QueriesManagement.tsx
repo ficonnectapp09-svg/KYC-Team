@@ -522,7 +522,8 @@ export const QueriesManagement: React.FC = () => {
         onClose={() => setSelectedQuery(null)}
         title={`Case ${selectedQuery?.queryId}: ${selectedQuery?.subject}`}
         subtitle={`Owner: ${selectedQuery?.currentDepartment} | Shared Visibility: ${selectedQuery?.sharedDepartments.join(', ')}`}
-        maxWidth="4xl"
+        maxWidth="6xl"
+        fullScreen={true}
       >
         {selectedQuery && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">

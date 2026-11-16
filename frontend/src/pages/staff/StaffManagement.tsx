@@ -1058,7 +1058,8 @@ export const StaffManagement: React.FC = () => {
         onClose={() => setSelectedEmp(null)}
         title="Employee 360° Operational Profile"
         subtitle={selectedEmp?.employeeId}
-        maxWidth="2xl"
+        maxWidth="6xl"
+        fullScreen={true}
       >
         {selectedEmp && (
           <div className="space-y-4 text-xs">

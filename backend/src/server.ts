@@ -26,7 +26,7 @@ import uploadRoutes from './routes/uploadRoutes';
 configureCloudinary();
 
 const app = express();
-const PORT = process.env.PORT || 8007;
+const PORT = Number(process.env.PORT) || 8007;
 
 // Security & Parsing
 app.use(
@@ -84,7 +84,7 @@ app.use(errorHandler);
 
 // Connect to DB and Start Listening
 connectDatabase().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Backoffice Server]: Running successfully on http://localhost:${PORT}`);
     console.log(`[Backoffice Server]: Port: ${PORT} | Environment: ${process.env.NODE_ENV}`);
   });
