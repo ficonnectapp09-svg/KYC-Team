@@ -133,9 +133,28 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       }
     };
 
+    let lastNotifFetchAt = Date.now();
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      lastNotifFetchAt = Date.now();
+      fetchNotifications();
+    }, 30000);
+
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        if (Date.now() - lastNotifFetchAt >= 20000) {
+          lastNotifFetchAt = Date.now();
+          fetchNotifications();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [user]);
 
   const handleMarkAllRead = async () => {

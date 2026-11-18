@@ -4,11 +4,21 @@ export const getAuthToken = (): string | null => {
   return localStorage.getItem('connect_backoffice_token');
 };
 
+const inFlightGetRequests = new Map<string, Promise<any>>();
+const getResponseCache = new Map<string, { data: any; timestamp: number }>();
+
+export const clearSupportApiCache = (): void => {
+  inFlightGetRequests.clear();
+  getResponseCache.clear();
+};
+
 export const setAuthToken = (token: string): void => {
+  clearSupportApiCache();
   localStorage.setItem('connect_backoffice_token', token);
 };
 
 export const removeAuthToken = (): void => {
+  clearSupportApiCache();
   localStorage.removeItem('connect_backoffice_token');
   localStorage.removeItem('connect_backoffice_user');
 };
@@ -83,10 +93,24 @@ const parseApiResponse = async <T = any>(response: Response, endpoint: string) =
   };
 };
 
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data: T;
+  message?: string;
+  count?: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+  categoryCounts?: Record<string, number>;
+  unreadCount?: number;
+  summary?: any;
+}
+
 export const apiFetch = async <T = any>(
   endpoint: string,
   options: RequestInit = {}
-) => {
+): Promise<ApiResponse<T>> => {
   const token = getAuthToken();
 
   const headers: HeadersInit = {
@@ -107,18 +131,57 @@ export const apiFetch = async <T = any>(
   }
 
   const url = `${API_BASE}${cleanEndpoint}`;
+  const method = String(options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET' || method === 'HEAD';
+  const authScope = token ? token.slice(-12) : 'anon';
+  const reqKey = `${authScope}:${method}:${url}`;
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...options,
-      headers
-    });
-  } catch {
-    throw new Error('Unable to reach the backend server. Please ensure the API server is running.');
+  if (isGet) {
+    // Short 15s TTL cache for badge count endpoints; in-flight deduplication for ALL GETs
+    const isCountEndpoint = cleanEndpoint.includes('/categories/counts');
+    if (isCountEndpoint) {
+      const cached = getResponseCache.get(reqKey);
+      if (cached && Date.now() - cached.timestamp < 15000) {
+        return cached.data;
+      }
+    }
+    if (inFlightGetRequests.has(reqKey)) {
+      return inFlightGetRequests.get(reqKey)!;
+    }
   }
 
-  return parseApiResponse<T>(response, url);
+  const execute = (async () => {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers
+      });
+    } catch {
+      throw new Error('Unable to reach the backend server. Please ensure the API server is running.');
+    }
+
+    const parsed = await parseApiResponse<T>(response, url);
+    if (isGet && cleanEndpoint.includes('/categories/counts')) {
+      getResponseCache.set(reqKey, { data: parsed, timestamp: Date.now() });
+    } else if (!isGet) {
+      // Invalidate count caches immediately after any mutation and notify Sidebar badges
+      getResponseCache.clear();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('support:counts_invalidated'));
+      }
+    }
+    return parsed;
+  })();
+
+  if (isGet) {
+    inFlightGetRequests.set(reqKey, execute);
+    return execute.finally(() => {
+      inFlightGetRequests.delete(reqKey);
+    });
+  }
+
+  return execute;
 };
 
 /**

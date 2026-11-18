@@ -73,29 +73,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     let active = true;
     const loadCounts = async () => {
       try {
+        const tasks: Promise<void>[] = [];
         if (isKyc) {
-          const r = await apiFetch<Record<string, number>>('/kyc/categories/counts');
-          if (active && r.success && r.data) setKycCounts(r.data);
+          tasks.push(
+            apiFetch<Record<string, number>>('/kyc/categories/counts').then(r => {
+              if (active && r.success && r.data) setKycCounts(r.data);
+            })
+          );
         }
         if (isPayment) {
-          const r = await apiFetch<Record<string, number>>('/payments/categories/counts');
-          if (active && r.success && r.data) setPaymentCounts(r.data);
+          tasks.push(
+            apiFetch<Record<string, number>>('/payments/categories/counts').then(r => {
+              if (active && r.success && r.data) setPaymentCounts(r.data);
+            })
+          );
         }
         if (isQueries) {
-          const r = await apiFetch<Record<string, number>>('/queries/categories/counts');
-          if (active && r.success && r.data) setQueryCounts(r.data);
+          tasks.push(
+            apiFetch<Record<string, number>>('/queries/categories/counts').then(r => {
+              if (active && r.success && r.data) setQueryCounts(r.data);
+            })
+          );
         }
-        const sr = await apiFetch<Record<string, number>>('/salary/categories/counts');
-        if (active && sr.success && sr.data) setSalaryCounts(sr.data);
+        tasks.push(
+          apiFetch<Record<string, number>>('/salary/categories/counts').then(sr => {
+            if (active && sr.success && sr.data) setSalaryCounts(sr.data);
+          })
+        );
+        await Promise.allSettled(tasks);
       } catch {
         // Non-blocking background count badge refresh
       }
     };
     loadCounts();
+
+    const handleInvalidated = () => {
+      if (active) loadCounts();
+    };
+    window.addEventListener('support:counts_invalidated', handleInvalidated);
     return () => {
       active = false;
+      window.removeEventListener('support:counts_invalidated', handleInvalidated);
     };
-  }, [isKyc, isPayment, isQueries, location.pathname]);
+  }, [isKyc, isPayment, isQueries]);
 
   const toggleExpand = (key: ExpandableSectionKey, defaultPath: string) => {
     setExpanded(prev => {
