@@ -12,6 +12,9 @@ export default defineConfig({
   server: {
     port: 5175,
     host: true,
+    hmr: {
+      overlay: false
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8007',

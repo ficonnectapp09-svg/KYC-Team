@@ -110,12 +110,16 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           icon={Layers}
           variant="indigo"
           subtitle={showAmountStat && summary.totalAmount !== undefined ? `Volume: ₹${(summary.totalAmount || 0).toLocaleString()}` : undefined}
+          onClick={onStatusChange ? () => onStatusChange('All') : undefined}
+          isActive={onStatusChange ? !statusFilter || statusFilter === 'All' : false}
         />
         <StatCard
           title={pendingLabel}
           value={summary.pendingCount ?? 0}
           icon={Clock}
           variant="amber"
+          onClick={onStatusChange ? () => onStatusChange('Unassigned') : undefined}
+          isActive={onStatusChange ? statusFilter === 'Unassigned' || statusFilter === 'Pending' || statusFilter === 'Re-upload Requested' : false}
         />
         {showInProgress && (
           <StatCard
@@ -123,6 +127,8 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
             value={summary.inProgressCount ?? 0}
             icon={RefreshCw}
             variant="purple"
+            onClick={onStatusChange ? () => onStatusChange('In Progress') : undefined}
+            isActive={onStatusChange ? statusFilter === 'In Progress' || statusFilter === 'Assigned' : false}
           />
         )}
         <StatCard
@@ -130,6 +136,8 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           value={summary.completedCount ?? 0}
           icon={CheckCircle2}
           variant="emerald"
+          onClick={onStatusChange ? () => onStatusChange('Approved') : undefined}
+          isActive={onStatusChange ? statusFilter === 'Approved' || statusFilter === 'Completed' : false}
         />
       </div>
 

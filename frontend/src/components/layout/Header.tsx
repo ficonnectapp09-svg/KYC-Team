@@ -129,7 +129,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           setUnreadCount(res.unreadCount || 0);
         }
       } catch (err) {
-        console.error('Failed to load notifications:', err);
+        // Suppress background polling noise in console
       }
     };
 

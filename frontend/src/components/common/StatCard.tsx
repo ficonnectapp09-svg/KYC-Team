@@ -11,6 +11,8 @@ interface StatCardProps {
     isPositive?: boolean;
   };
   variant?: 'indigo' | 'emerald' | 'amber' | 'rose' | 'sky' | 'purple';
+  onClick?: () => void;
+  isActive?: boolean;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -19,7 +21,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   subtitle,
   icon: Icon,
   trend,
-  variant = 'indigo'
+  variant = 'indigo',
+  onClick,
+  isActive = false
 }) => {
   const variantColors = {
     indigo: {
@@ -58,7 +62,15 @@ export const StatCard: React.FC<StatCardProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 shadow-sm transition-all duration-200 ${style.border}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick() : undefined}
+      className={`relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border p-5 shadow-sm transition-all duration-200 ${
+        isActive
+          ? 'ring-2 ring-indigo-500 border-indigo-500 shadow-md bg-indigo-50/30 dark:bg-indigo-950/30'
+          : 'border-slate-200/80 dark:border-slate-800'
+      } ${onClick ? 'cursor-pointer hover:shadow-md active:scale-[0.99] select-none' : ''} ${style.border}`}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">

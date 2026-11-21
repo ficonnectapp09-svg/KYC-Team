@@ -151,13 +151,27 @@ export const apiFetch = async <T = any>(
   }
 
   const execute = (async () => {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...options,
-        headers
-      });
-    } catch {
+    let response: Response | undefined;
+    let attempts = 0;
+    const maxAttempts = isGet ? 2 : 1;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        response = await fetch(url, {
+          ...options,
+          headers
+        });
+        break;
+      } catch (fetchErr) {
+        if (attempts < maxAttempts) {
+          // Brief 350ms delay before retrying transient GET network error
+          await new Promise(r => setTimeout(r, 350));
+        }
+      }
+    }
+
+    if (!response) {
       throw new Error('Unable to reach the backend server. Please ensure the API server is running.');
     }
 

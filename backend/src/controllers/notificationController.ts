@@ -9,10 +9,26 @@ export class NotificationController {
       const filter: any = {
         $or: [
           { targetEmployeeId: currentUser.employeeId },
-          { targetDepartment: currentUser.department },
-          { targetRole: currentUser.role }
+          {
+            targetRole: currentUser.role,
+            $or: [
+              { targetDepartment: currentUser.department },
+              { targetDepartment: { $exists: false } },
+              { targetDepartment: null }
+            ]
+          },
+          {
+            targetDepartment: currentUser.department,
+            $or: [
+              { targetRole: { $exists: false } },
+              { targetRole: null }
+            ]
+          }
         ]
       };
+      if (currentUser.role === 'overall_lead') {
+        filter.$or.push({ targetRole: 'overall_lead' });
+      }
 
       const notifications = await NotificationItem.find(filter)
         .sort({ createdAt: -1 })
@@ -50,15 +66,33 @@ export class NotificationController {
   static async markAllAsRead(req: Request, res: Response): Promise<any> {
     try {
       const currentUser = req.user!;
+      const markFilter: any = {
+        $or: [
+          { targetEmployeeId: currentUser.employeeId },
+          {
+            targetRole: currentUser.role,
+            $or: [
+              { targetDepartment: currentUser.department },
+              { targetDepartment: { $exists: false } },
+              { targetDepartment: null }
+            ]
+          },
+          {
+            targetDepartment: currentUser.department,
+            $or: [
+              { targetRole: { $exists: false } },
+              { targetRole: null }
+            ]
+          }
+        ],
+        isRead: false
+      };
+      if (currentUser.role === 'overall_lead') {
+        markFilter.$or.push({ targetRole: 'overall_lead' });
+      }
+
       await NotificationItem.updateMany(
-        {
-          $or: [
-            { targetEmployeeId: currentUser.employeeId },
-            { targetDepartment: currentUser.department },
-            { targetRole: currentUser.role }
-          ],
-          isRead: false
-        },
+        markFilter,
         { $set: { isRead: true, readAt: new Date() } }
       );
 

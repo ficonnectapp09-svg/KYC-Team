@@ -58,7 +58,11 @@ export interface KycRequest {
   phone: string;
   email: string;
   priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-  status: 'Unassigned' | 'Assigned' | 'In Progress' | 'Approved' | 'Rejected' | 'Re-upload Requested';
+  status: 'Unassigned' | 'Assigned' | 'In Progress' | 'Approved' | 'Rejected' | 'Re-upload Requested' | 'Escalated';
+  isEscalated?: boolean;
+  escalatedAt?: string;
+  escalatedBy?: any;
+  escalationReason?: string;
   assignedEmployeeId?: string | null;
   assignedEmployeeName?: string | null;
   registrationDate: string;

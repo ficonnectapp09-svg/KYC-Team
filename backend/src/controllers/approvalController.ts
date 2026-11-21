@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { FinancialApproval } from '../models/FinancialApproval';
 import { PaymentTransaction } from '../models/PaymentTransaction';
-import { ApprovalStatus, FinancialClassification } from '../config/constants';
+import { ApprovalStatus, FinancialClassification, Role, Department } from '../config/constants';
 import { generateId, maskBankAccount, buildIdFilter } from '../utils/security';
 import { logAudit } from '../middleware/auditLogger';
+import { NotificationItem } from '../models/NotificationItem';
 
 export class ApprovalController {
   /**
@@ -126,6 +127,17 @@ export class ApprovalController {
       });
 
       await approval.save();
+
+      // Create high-priority notification for Payment Checker / Lead
+      await NotificationItem.create({
+        notificationId: generateId('NOTIF'),
+        targetRole: Role.PAYMENT_LEAD,
+        targetDepartment: Department.PAYMENT,
+        title: `Financial Approval Required: ${approvalId}`,
+        message: `${currentUser.name} submitted ${transactionType} of ₹${Number(amount).toLocaleString()} for ${recipientName}. Awaiting Checker Review.`,
+        type: 'PAYMENT',
+        actionUrl: '/payment/maker-checker-approvals'
+      });
 
       await logAudit(
         req,

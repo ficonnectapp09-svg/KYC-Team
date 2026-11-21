@@ -396,13 +396,18 @@ export const SalaryManagement: React.FC = () => {
                     <td className="py-3.5 px-4 font-semibold text-emerald-600">₹{st.grossSalary?.toLocaleString()}</td>
                     <td className="py-3.5 px-4 font-extrabold">₹{st.netPayable?.toLocaleString()}</td>
                     <td className="py-3.5 px-5 text-right">
-                      {isPaymentTeam && (
+                      {isPaymentTeam ? (
                         <button
                           onClick={() => setEditingStruct(st)}
                           className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 font-semibold"
                         >
                           Edit Structure
                         </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          {st.status || 'Active Config'}
+                        </span>
                       )}
                     </td>
                   </tr>

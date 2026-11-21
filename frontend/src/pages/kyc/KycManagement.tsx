@@ -289,6 +289,13 @@ export const KycManagement: React.FC = () => {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'Escalated':
+        return (
+          <Badge variant="danger">
+            <AlertTriangle className="w-3 h-3 mr-1 inline text-rose-500" />
+            Escalated to Lead
+          </Badge>
+        );
       case 'Approved':
         return <Badge variant="success">Approved</Badge>;
       case 'Rejected':
@@ -374,6 +381,7 @@ export const KycManagement: React.FC = () => {
         onStatusChange={setStatusFilter}
         statusOptions={[
           { value: 'All', label: 'All Statuses' },
+          { value: 'Escalated', label: 'Escalated to Lead' },
           { value: 'Unassigned', label: 'Unassigned' },
           { value: 'Assigned', label: 'Assigned' },
           { value: 'In Progress', label: 'In Progress' },
@@ -475,67 +483,73 @@ export const KycManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {transferredQueries.map((q: any) => (
-                    <tr key={q._id || q.queryId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                        {q.queryId}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 dark:text-white">{q.userName || 'Anonymous User'}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{q.userPhone || q.userEmail || 'No contact'}</div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {q.userType || 'Customer'}
-                        </span>
-                        <div className="text-[11px] text-slate-400 mt-0.5">{q.category}</div>
-                      </td>
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <div className="font-semibold text-slate-900 dark:text-white truncate">{q.subject}</div>
-                        <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{q.description}</div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {q.transferredBy?.name || 'Queries Team'}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {q.transferredAt ? new Date(q.transferredAt).toLocaleString() : 'Transferred'}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-200">
-                          {q.transferReason || 'Document verification / correction required'}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <Badge
-                          variant={
-                            q.status === 'Resolved' || q.status === 'Closed'
-                              ? 'success'
-                              : q.status === 'In Progress'
-                              ? 'info'
-                              : 'warning'
-                          }
-                        >
-                          {q.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3.5 px-5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTransferredQuery(q);
-                            setTransferredAction('IN_PROGRESS');
-                            setTransferredNotes('');
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Process KYC Query</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {transferredQueries.map((q: any) => {
+                    const latestTransfer = q.transferHistory && q.transferHistory.length > 0
+                      ? q.transferHistory[q.transferHistory.length - 1]
+                      : null;
+
+                    return (
+                      <tr key={q._id || q.queryId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {q.queryId}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-900 dark:text-white">{q.userName || 'Anonymous User'}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">{q.userPhone || q.userEmail || 'No contact'}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {q.userType || 'Customer'}
+                          </span>
+                          <div className="text-[11px] text-slate-400 mt-0.5">{q.category}</div>
+                        </td>
+                        <td className="py-3.5 px-4 max-w-xs">
+                          <div className="font-semibold text-slate-900 dark:text-white truncate">{q.subject}</div>
+                          <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{q.description}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-slate-800 dark:text-slate-200">
+                            {latestTransfer?.transferredByName || q.transferredBy?.name || 'Queries Team'}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {latestTransfer?.transferredAt || q.transferredAt ? new Date(latestTransfer?.transferredAt || q.transferredAt).toLocaleString() : 'Transferred'}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 max-w-xs">
+                          <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-200">
+                            {latestTransfer?.reason || q.transferReason || 'Document verification / correction required'}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <Badge
+                            variant={
+                              q.status === 'Resolved' || q.status === 'Closed'
+                                ? 'success'
+                                : q.status === 'In Progress'
+                                ? 'info'
+                                : 'warning'
+                            }
+                          >
+                            {q.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3.5 px-5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTransferredQuery(q);
+                              setTransferredAction('IN_PROGRESS');
+                              setTransferredNotes('');
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Process KYC Query</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -610,9 +624,19 @@ export const KycManagement: React.FC = () => {
                 {requests.map(req => {
                   const details = req.applicantDetails || {};
                   const pendingText = formatPendingDuration(req.submissionDate, req.status);
+                  const isEscalatedReq = req.isEscalated ||
+                    req.verificationRemarks?.startsWith('ESCALATED') ||
+                    req.approvalHistory?.some((h: any) => h.action === 'ESCALATED' && !['Approved', 'Rejected'].includes(req.status));
 
                   return (
-                    <tr key={req._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                    <tr
+                      key={req._id}
+                      className={`transition-colors ${
+                        isEscalatedReq
+                          ? 'bg-rose-50/60 dark:bg-rose-950/20 border-l-4 border-l-rose-500'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
                       {activeCategory.key === 'VENDOR' ? (
                         <>
                           <td className="py-3.5 px-4 font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
@@ -707,7 +731,15 @@ export const KycManagement: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 space-y-1">
-                        <div>{getStatusBadge(req.status)}</div>
+                        <div className="flex flex-col gap-1 items-start">
+                          {isEscalatedReq && (
+                            <Badge variant="danger">
+                              <AlertTriangle className="w-3 h-3 mr-1 inline text-rose-500" />
+                              Escalated to Lead
+                            </Badge>
+                          )}
+                          <div>{getStatusBadge(req.status)}</div>
+                        </div>
                         {(activeCategory.key === 'VENDOR' || activeCategory.key === 'AGENT' || activeCategory.key === 'ALL') && (
                           <div>
                             {req.routedToPayment ? (
@@ -906,10 +938,29 @@ export const KycManagement: React.FC = () => {
                 {selectedTransferredQuery.description}
               </div>
               <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Transferred from: <strong>{selectedTransferredQuery.transferredBy?.name || 'Queries Team'}</strong></span>
-                <span>Reason: <strong className="text-amber-600 dark:text-amber-400">{selectedTransferredQuery.transferReason || 'Document verification'}</strong></span>
+                <span>Transferred from: <strong>{selectedTransferredQuery.transferHistory?.[selectedTransferredQuery.transferHistory?.length - 1]?.transferredByName || selectedTransferredQuery.transferredBy?.name || 'Queries Team'}</strong></span>
+                <span>Reason: <strong className="text-amber-600 dark:text-amber-400">{selectedTransferredQuery.transferHistory?.[selectedTransferredQuery.transferHistory?.length - 1]?.reason || selectedTransferredQuery.transferReason || 'Document verification'}</strong></span>
               </div>
             </div>
+
+            {selectedTransferredQuery.messages && selectedTransferredQuery.messages.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Conversation Thread ({selectedTransferredQuery.messages.length})
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+                  {selectedTransferredQuery.messages.map((m: any, idx: number) => (
+                    <div key={idx} className={`p-2.5 rounded-xl ${m.senderRole === 'user' ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'}`}>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                        <span className="font-bold">{m.senderName || m.senderRole}</span>
+                        <span>{m.sentAt ? new Date(m.sentAt).toLocaleString() : ''}</span>
+                      </div>
+                      <div className="text-xs leading-relaxed">{m.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">

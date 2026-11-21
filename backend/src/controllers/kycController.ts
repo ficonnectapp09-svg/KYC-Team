@@ -46,6 +46,12 @@ export class KycController {
           counts[cat.key] = byType.get(cat.applicantType) || 0;
         }
       }
+      try {
+        const { QueryTicket } = await import('../models/QueryTicket');
+        counts['KYC_QUERIES'] = await QueryTicket.countDocuments({ currentDepartment: Department.KYC });
+      } catch {
+        counts['KYC_QUERIES'] = 0;
+      }
 
       return res.json({ success: true, data: counts });
     } catch (error: any) {
@@ -85,7 +91,17 @@ export class KycController {
       if (resolvedCategory.applicantType) {
         filter.applicantType = resolvedCategory.applicantType;
       }
-      if (status && status !== 'All') filter.status = status;
+      if (status && status !== 'All') {
+        if (status === 'Escalated') {
+          filter.$or = [
+            { isEscalated: true },
+            { verificationRemarks: /^ESCALATED/i },
+            { 'approvalHistory.action': 'ESCALATED', status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] } }
+          ];
+        } else {
+          filter.status = status;
+        }
+      }
       if (priority && priority !== 'All') filter.priority = priority;
       if (assignedEmployeeId && assignedEmployeeId !== 'All') {
         filter.assignedEmployeeId = assignedEmployeeId === 'UNASSIGNED' ? null : assignedEmployeeId;
@@ -154,6 +170,12 @@ export class KycController {
           categoryCounts[cat.key] = countByType.get(cat.applicantType) || 0;
         }
       }
+      try {
+        const { QueryTicket } = await import('../models/QueryTicket');
+        categoryCounts['KYC_QUERIES'] = await QueryTicket.countDocuments({ currentDepartment: Department.KYC });
+      } catch {
+        categoryCounts['KYC_QUERIES'] = 0;
+      }
 
       const summary = {
         totalCount: categoryItems.length,
@@ -167,17 +189,27 @@ export class KycController {
         rejectedCount: categoryItems.filter((r) => r.status === KycStatus.REJECTED).length
       };
 
+      const enrichedRequests = requests.map((r: any) => {
+        const obj = r.toObject ? r.toObject() : { ...r };
+        obj.isEscalated = Boolean(
+          obj.isEscalated ||
+          obj.verificationRemarks?.startsWith('ESCALATED') ||
+          obj.approvalHistory?.some((h: any) => h.action === 'ESCALATED' && !['Approved', 'Rejected'].includes(obj.status))
+        );
+        return obj;
+      });
+
       return res.json({
         success: true,
         category: resolvedCategory,
-        count: requests.length,
+        count: enrichedRequests.length,
         total,
         page: pageNum,
         limit: limitNum,
         totalPages: Math.max(1, Math.ceil(total / limitNum)),
         summary,
         categoryCounts,
-        data: requests
+        data: enrichedRequests
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
@@ -972,6 +1004,10 @@ export class KycController {
       if (action === 'ESCALATE') {
         kycRequest.priority = 'Urgent';
         kycRequest.status = KycStatus.IN_PROGRESS;
+        kycRequest.isEscalated = true;
+        kycRequest.escalatedAt = new Date();
+        kycRequest.escalatedBy = currentUser.name;
+        kycRequest.escalationReason = reason || remarks || 'Requires Team Lead review';
         const escRemarks = `ESCALATED by ${currentUser.name}: ${reason || remarks || 'Requires Team Lead review'}`;
         kycRequest.verificationRemarks = escRemarks;
         kycRequest.approvalHistory = kycRequest.approvalHistory || [];
@@ -1236,6 +1272,7 @@ export class KycController {
       const db = mongoose.connection.db;
       let rawPan = '';
       let rawAadhaar = '';
+      let rawGst = '';
       let rawAccountNumber = '';
       let rawIfsc = '';
 
@@ -1250,6 +1287,7 @@ export class KycController {
           if (v) {
             rawPan = v.panNumber || '';
             rawAadhaar = v.aadhaarNumber || '';
+            rawGst = v.gstNumber || v.gst || '';
             rawAccountNumber = v.bankDetails?.accountNumber || v.accountNumber || '';
             rawIfsc = v.bankDetails?.ifscCode || v.ifscCode || '';
           }
@@ -1291,6 +1329,8 @@ export class KycController {
           panNumber: rawPan || kycRequest.applicantDetails?.panNumber || 'Available in Verified Document Preview',
           aadhaar: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
           aadhaarNumber: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
+          gst: rawGst || kycRequest.applicantDetails?.gst || kycRequest.applicantDetails?.gstNumber || 'Unregistered',
+          gstNumber: rawGst || kycRequest.applicantDetails?.gst || kycRequest.applicantDetails?.gstNumber || 'Unregistered',
           bankAccount: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
           accountNumber: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
           ifsc: rawIfsc || kycRequest.applicantDetails?.bankDetails?.ifscCode || 'Available in Verified Document Preview',
@@ -1317,7 +1357,17 @@ export class KycController {
         'transferHistory.0': { $exists: true }
       };
 
-      if (status && status !== 'All') filter.status = status;
+      if (status && status !== 'All') {
+        if (status === 'Escalated') {
+          filter.$or = [
+            { isEscalated: true },
+            { verificationRemarks: /^ESCALATED/i },
+            { 'approvalHistory.action': 'ESCALATED', status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] } }
+          ];
+        } else {
+          filter.status = status;
+        }
+      }
       if (priority && priority !== 'All') filter.priority = priority;
       if (search) {
         filter.$or = [

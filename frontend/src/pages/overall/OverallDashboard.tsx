@@ -163,6 +163,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="KYC, Payment & Queries"
           icon={Building2}
           variant="indigo"
+          onClick={() => navigate('/departments')}
         />
         <StatCard
           title="Total Team Leads"
@@ -170,6 +171,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="Independent Dept Leads"
           icon={Users}
           variant="sky"
+          onClick={() => navigate('/staff')}
         />
         <StatCard
           title="Total Employees"
@@ -177,6 +179,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="Across Organization"
           icon={Users}
           variant="purple"
+          onClick={() => navigate('/staff')}
         />
         <StatCard
           title="Active Employees"
@@ -184,6 +187,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${attendance.presentToday ?? 0} Present Today`}
           icon={CheckCircle2}
           variant="emerald"
+          onClick={() => navigate('/staff')}
         />
         <StatCard
           title="Employees on Leave"
@@ -191,6 +195,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${attendance.onLeaveToday ?? 0} Scheduled Leave`}
           icon={CalendarCheck2}
           variant="amber"
+          onClick={() => navigate('/staff')}
         />
       </div>
 
@@ -202,6 +207,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${kyc.overdueKycCount || 0} Exceeded 24h SLA`}
           icon={ShieldCheck}
           variant="amber"
+          onClick={() => navigate('/kyc/all?status=Unassigned')}
         />
         <StatCard
           title="Approved KYC & Re-uploads"
@@ -209,6 +215,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${kyc.reuploadRequests || 0} Re-upload Requests Pending`}
           icon={FileWarning}
           variant="emerald"
+          onClick={() => navigate('/kyc/all?status=Approved')}
         />
         <StatCard
           title="Customer & Partner Queries"
@@ -216,6 +223,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${queries.resolvedQueries || 0} Resolved | ${queries.overdueQueries || 0} Overdue`}
           icon={MessageSquare}
           variant="sky"
+          onClick={() => navigate('/queries/all?status=New')}
         />
         <StatCard
           title="Operational Tasks"
@@ -223,6 +231,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${tasks.overdueTasks || 0} Overdue Tasks`}
           icon={AlertTriangle}
           variant={tasks.overdueTasks > 0 ? 'rose' : 'indigo'}
+          onClick={() => navigate('/tasks')}
         />
       </div>
 
@@ -234,6 +243,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="Orders, Bookings, Memberships"
           icon={TrendingUp}
           variant="emerald"
+          onClick={() => navigate('/payment/income')}
         />
         <StatCard
           title="Total Outgoing"
@@ -241,6 +251,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="Settlements, Payouts & Payroll"
           icon={CreditCard}
           variant="rose"
+          onClick={() => navigate('/payment/expenses')}
         />
         <StatCard
           title="Agent Deposit Liabilities"
@@ -248,6 +259,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle="Balance Sheet Liability Only"
           icon={Scale}
           variant="purple"
+          onClick={() => navigate('/payment/agent-deposit-liabilities')}
         />
         <StatCard
           title="Total Salaries Paid"
@@ -255,6 +267,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${pendingApprovals.paymentApprovalsCount || 0} Pending Payments`}
           icon={Banknote}
           variant="indigo"
+          onClick={() => navigate('/salary/overview')}
         />
         <StatCard
           title="Pending Salary Payments"
@@ -262,6 +275,7 @@ export const OverallDashboard: React.FC = () => {
           subtitle={`${pendingApprovals.salaryApprovalsCount || 0} Awaiting Overall Lead`}
           icon={Clock}
           variant="amber"
+          onClick={() => navigate('/salary/pending-approvals')}
         />
       </div>
 

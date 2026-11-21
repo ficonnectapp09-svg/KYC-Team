@@ -35,7 +35,8 @@ import {
   Archive,
   FileWarning,
   FileCheck,
-  Lock
+  Lock,
+  EyeOff
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { KycRequest, Employee } from '../../types';
@@ -51,6 +52,25 @@ interface KycVerificationWorkbenchProps {
   currentUserRole?: string;
   currentUserId?: string;
 }
+
+// Helper to resolve document URLs: handles Cloudinary public IDs, local files, or full URLs
+export const resolveDocumentUrl = (rawUrl?: string): string => {
+  if (!rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed;
+  }
+  // Cloudinary public ID or short identifier
+  if (/^[a-zA-Z0-9_\-\/]+$/.test(trimmed)) {
+    return `https://res.cloudinary.com/r6vovvet/image/upload/${trimmed}`;
+  }
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+};
 
 // Category-specific mandatory document checklists
 const CATEGORY_DOC_CHECKLIST: Record<string, string[]> = {
@@ -130,6 +150,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   const [unmaskedSensitive, setUnmaskedSensitive] = useState<{
     pan?: string;
     aadhaar?: string;
+    gst?: string;
     bankAccount?: string;
     ifsc?: string;
   } | null>(null);
@@ -137,6 +158,11 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
   const handleRevealSensitive = async () => {
     if (!liveReq?.requestId) return;
+    // Reversible toggle: if already unmasked, clicking again re-masks the data
+    if (unmaskedSensitive) {
+      setUnmaskedSensitive(null);
+      return;
+    }
     try {
       setRevealingSensitive(true);
       const res = await apiFetch<any>(`/kyc/requests/${liveReq.requestId}/reveal-sensitive`, {
@@ -316,14 +342,15 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
       for (let i = 0; i < documents.length; i++) {
         const doc = documents[i];
-        if (!doc.docUrl) continue;
+        const resolvedDocUrl = resolveDocumentUrl(doc.docUrl);
+        if (!resolvedDocUrl) continue;
         setZipProgressText(`Fetching ${doc.docName || doc.docType} (${i + 1}/${documents.length})...`);
         try {
-          const fileRes = await fetch(doc.docUrl);
+          const fileRes = await fetch(resolvedDocUrl);
           if (fileRes.ok) {
             const buffer = await fileRes.arrayBuffer();
             let ext = 'png';
-            const lower = (doc.docUrl + ' ' + doc.docName).toLowerCase();
+            const lower = (resolvedDocUrl + ' ' + doc.docName).toLowerCase();
             if (lower.includes('.pdf')) ext = 'pdf';
             else if (lower.includes('.jpg') || lower.includes('.jpeg')) ext = 'jpg';
             else if (lower.includes('.webp')) ext = 'webp';
@@ -694,7 +721,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         {/* Individual Download Action */}
                         <button
                           type="button"
-                          onClick={e => handleDownloadSingle(e, doc.docUrl, doc.docName)}
+                          onClick={e => handleDownloadSingle(e, resolveDocumentUrl(doc.docUrl), doc.docName)}
                           className="p-1.5 rounded-lg bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors shrink-0"
                           title="Download this document"
                         >
@@ -794,7 +821,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                 {activeDoc && (
                   <button
                     type="button"
-                    onClick={e => handleDownloadSingle(e, activeDoc.docUrl, activeDoc.docName)}
+                    onClick={e => handleDownloadSingle(e, resolveDocumentUrl(activeDoc.docUrl), activeDoc.docName)}
                     className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
                     title="Download this file"
                   >
@@ -808,7 +835,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
             <div className="flex-1 bg-slate-950 flex items-center justify-center p-4 overflow-auto relative min-h-0">
               {activeDoc ? (
                 (() => {
-                  const url = activeDoc.docUrl;
+                  const url = resolveDocumentUrl(activeDoc.docUrl);
                   const lower = (url + ' ' + activeDoc.docName).toLowerCase();
 
                   if (previewError) {
@@ -1096,19 +1123,31 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                 </button>
                 {openSections.identity && (
                   <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-3">
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
-                      <div className="flex items-center gap-1.5 text-[11px] text-purple-700 dark:text-purple-300 font-semibold">
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Protected Identity Data</span>
+                    <div className={`flex items-center justify-between p-2 rounded-xl border transition-colors ${
+                      unmaskedSensitive
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50'
+                        : 'bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50'
+                    }`}>
+                      <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${
+                        unmaskedSensitive
+                          ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-purple-700 dark:text-purple-300'
+                      }`}>
+                        {unmaskedSensitive ? <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> : <Lock className="w-3.5 h-3.5" />}
+                        <span>{unmaskedSensitive ? 'Sensitive Data Revealed (Audited Access)' : 'Protected Identity Data'}</span>
                       </div>
                       <button
                         type="button"
                         onClick={handleRevealSensitive}
                         disabled={revealingSensitive}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] shadow-sm disabled:opacity-50 transition-all"
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-white font-bold text-[10px] shadow-sm disabled:opacity-50 transition-all ${
+                          unmaskedSensitive
+                            ? 'bg-amber-600 hover:bg-amber-700'
+                            : 'bg-purple-600 hover:bg-purple-700'
+                        }`}
                       >
-                        <Eye className="w-3 h-3" />
-                        {revealingSensitive ? 'Revealing...' : unmaskedSensitive ? 'Unmasked (Audited)' : 'Reveal (Audit Logged)'}
+                        {unmaskedSensitive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        {revealingSensitive ? 'Revealing...' : unmaskedSensitive ? 'Hide Sensitive Data (Re-mask)' : 'Reveal (Audit Logged)'}
                       </button>
                     </div>
 
@@ -1116,20 +1155,24 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">PAN Number</span>
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                          {unmaskedSensitive?.pan || details.panNumberMasked || details.pan || '•••••9012•'}
+                          {unmaskedSensitive?.pan || details.panNumberMasked || (details.pan ? (details.pan.length > 4 ? `••••••${details.pan.slice(-4)}` : '••••••••') : '•••••9012•')}
                         </div>
                       </div>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Aadhaar Number</span>
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                          {unmaskedSensitive?.aadhaar || details.aadhaarNumberMasked || details.aadhaar || '•••• •••• 8812'}
+                          {unmaskedSensitive?.aadhaar || details.aadhaarNumberMasked || (details.aadhaar ? `•••• •••• ${details.aadhaar.slice(-4)}` : '•••• •••• 8812')}
                         </div>
                       </div>
-                      {details.gst !== undefined && (
+                      {(details.gst !== undefined || details.gstNumber || unmaskedSensitive?.gst) && (
                         <div>
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">GST Registration</span>
-                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">
-                            {details.gst ? details.gst : details.gstStatus || 'Unregistered'}
+                          <div className="text-slate-700 dark:text-slate-300 font-mono mt-0.5">
+                            {unmaskedSensitive?.gst || (unmaskedSensitive && (details.gst || details.gstNumber))
+                              ? (unmaskedSensitive?.gst || details.gst || details.gstNumber)
+                              : (details.gst || details.gstNumber)
+                              ? `${String(details.gst || details.gstNumber).slice(0, 2)}•••••••••${String(details.gst || details.gstNumber).slice(-3)}`
+                              : details.gstStatus || 'Unregistered'}
                           </div>
                         </div>
                       )}

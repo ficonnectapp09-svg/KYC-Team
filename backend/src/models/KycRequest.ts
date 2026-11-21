@@ -91,6 +91,10 @@ export interface IKycRequest extends Document {
   approvalHistory: IKycApprovalEvent[];
   routedToPayment: boolean;
   paymentTaskId?: string;
+  isEscalated?: boolean;
+  escalatedAt?: Date | null;
+  escalatedBy?: string | null;
+  escalationReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -200,7 +204,11 @@ const KycRequestSchema = new Schema<IKycRequest>({
     }, { _id: false })
   ],
   routedToPayment: { type: Boolean, default: false, index: true },
-  paymentTaskId: { type: String, default: null }
+  paymentTaskId: { type: String, default: null },
+  isEscalated: { type: Boolean, default: false, index: true },
+  escalatedAt: { type: Date, default: null },
+  escalatedBy: { type: String, default: null },
+  escalationReason: { type: String, default: null }
 }, {
   timestamps: true,
   collection: 'backoffice_kyc_requests'
