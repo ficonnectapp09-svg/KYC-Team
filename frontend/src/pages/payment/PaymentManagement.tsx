@@ -11,9 +11,10 @@ import {
   AlertTriangle,
   Lock,
   Banknote,
-  ExternalLink
+  ExternalLink,
+  Download
 } from 'lucide-react';
-import { apiFetch } from '../../services/api';
+import { apiFetch, getAuthToken } from '../../services/api';
 import {
   PaymentTransaction,
   AgentDepositLiability,
@@ -130,6 +131,40 @@ export const PaymentManagement: React.FC = () => {
   });
 
   const [rejectReason, setRejectReason] = useState('');
+  const [exportingStatement, setExportingStatement] = useState(false);
+
+  const handleExportStatement = async () => {
+    try {
+      setExportingStatement(true);
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const q = new URLSearchParams();
+      if (activeCategory.key !== 'OVERVIEW' && activeCategory.key !== 'AGENT_DEPOSIT_LIABILITIES' && activeCategory.key !== 'MAKER_CHECKER_APPROVALS') {
+        q.append('category', activeCategory.key);
+      }
+      if (statusFilter !== 'All') q.append('status', statusFilter);
+      if (presetDateRange !== 'All') q.append('presetDateRange', presetDateRange);
+      if (customStartDate) q.append('startDate', customStartDate);
+      if (customEndDate) q.append('endDate', customEndDate);
+
+      const res = await fetch(`${apiBase}/payments/transactions/export?${q.toString()}`, {
+        headers: { Authorization: `Bearer ${getAuthToken() || ''}` }
+      });
+      if (!res.ok) throw new Error('Export failed or permission denied.');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment-statement-${activeCategory.slug || 'all'}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setErrorAlert(err?.message || 'CSV statement export failed.');
+    } finally {
+      setExportingStatement(false);
+    }
+  };
 
   const loadPaymentData = async (targetPage = page) => {
     try {
@@ -556,6 +591,15 @@ export const PaymentManagement: React.FC = () => {
                 >
                   <Plus className="w-4 h-4" />
                   <span>Initiate Payout (Maker)</span>
+                </button>
+                <button
+                  onClick={handleExportStatement}
+                  disabled={exportingStatement}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+                  title="Download CSV Statement"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{exportingStatement ? 'Exporting...' : 'Export Statement'}</span>
                 </button>
               </div>
             }
@@ -1059,22 +1103,25 @@ export const PaymentManagement: React.FC = () => {
             <input
               type="text"
               placeholder="Bank Acc #"
+              autoComplete="off"
               value={initiateForm.accountNumber}
-              onChange={e => setInitiateForm({ ...initiateForm, accountNumber: e.target.value })}
+              onChange={e => setInitiateForm(prev => ({ ...prev, accountNumber: e.target.value }))}
               className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border"
             />
             <input
               type="text"
               placeholder="IFSC"
+              autoComplete="off"
               value={initiateForm.ifscCode}
-              onChange={e => setInitiateForm({ ...initiateForm, ifscCode: e.target.value })}
+              onChange={e => setInitiateForm(prev => ({ ...prev, ifscCode: e.target.value }))}
               className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border"
             />
             <input
               type="text"
               placeholder="Bank Name"
+              autoComplete="off"
               value={initiateForm.bankName}
-              onChange={e => setInitiateForm({ ...initiateForm, bankName: e.target.value })}
+              onChange={e => setInitiateForm(prev => ({ ...prev, bankName: e.target.value }))}
               className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border"
             />
           </div>

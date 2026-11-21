@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { KycRequest } from '../models/KycRequest';
-import { ApplicantType, KycStatus } from '../config/constants';
+import { QueryTicket } from '../models/QueryTicket';
+import { ApplicantType, KycStatus, Department, QueryStatus } from '../config/constants';
 import { generateId, maskAadhaar, maskPan, maskBankAccount } from '../utils/security';
 
 export interface EcosystemSummary {
@@ -262,8 +263,18 @@ export class ConnectEcosystemReader {
     const db = this.getDb();
 
     const [vendors, agents] = await Promise.all([
-      db.collection('vendors').find({ kycStatus: { $in: [null, 'KYC Pending', 'pending'] } }).limit(20).toArray(),
-      db.collection('agents').find({ kycStatus: { $in: ['pending', 'pending_verification', 'KYC Pending'] } }).limit(20).toArray()
+      db.collection('vendors').find({
+        $or: [
+          { kycStatus: { $in: [null, '', 'KYC Pending', 'pending', 'pending_approval', 'under_review', 'submitted', 'Approved', 'approved', 'Verified'] } },
+          { kycStatus: { $exists: false } }
+        ]
+      }).toArray(),
+      db.collection('agents').find({
+        $or: [
+          { kycStatus: { $in: [null, '', 'pending', 'pending_verification', 'KYC Pending', 'under_review', 'approved'] } },
+          { kycStatus: { $exists: false } }
+        ]
+      }).toArray()
     ]);
 
     let importedCount = 0;
@@ -502,5 +513,133 @@ export class ConnectEcosystemReader {
       scannedVendors: vendors.length,
       scannedAgents: agents.length
     };
+  }
+
+  /**
+   * Bidirectional sync of support tickets created across Connect App external platforms
+   * (e.g. Agent Mobile App, Agent Website, Customer App) in the `tickets` or `supporttickets` collections.
+   */
+  static async syncEcosystemTickets(): Promise<{ syncedCount: number }> {
+    const db = this.getDb();
+    const rawTickets = await db.collection('tickets').find({}).toArray();
+    let syncedCount = 0;
+
+    for (const t of rawTickets) {
+      const queryId = String(t.ticketId || t._id);
+      const exists = await QueryTicket.findOne({ queryId });
+
+      const userType = t.ticketType === 'vendor_issue' || t.vendorName
+        ? 'Vendor'
+        : (t.creatorRole || t.assignedAgentRole ? 'Agent' : 'Customer');
+
+      const priorityMap: Record<string, 'Low' | 'Medium' | 'High' | 'Urgent'> = {
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+        urgent: 'Urgent'
+      };
+      const priority = priorityMap[String(t.priority || '').toLowerCase()] || 'Medium';
+
+      const statusMap: Record<string, QueryStatus> = {
+        open: QueryStatus.NEW,
+        assigned: QueryStatus.ASSIGNED,
+        in_progress: QueryStatus.IN_PROGRESS,
+        resolved: QueryStatus.RESOLVED,
+        closed: QueryStatus.RESOLVED
+      };
+      const rawStatus = String(t.status || '').toLowerCase();
+      const status = statusMap[rawStatus] || QueryStatus.NEW;
+
+      if (!exists) {
+        await QueryTicket.create({
+          queryId,
+          userType,
+          userId: String(t.creator || t.assignedTo || 'ECOSYSTEM-USER'),
+          userName: String(t.creatorName || t.assignedAgent || 'Ecosystem User'),
+          userEmail: String(t.creatorEmail || t.assignedAgentEmail || 'support@connectapp.in'),
+          userPhone: String(t.assignedAgentPhone || t.creatorPhone || ''),
+          category: String(t.category || 'General Support'),
+          subject: String(t.subject || 'Support Ticket'),
+          description: String(t.description || ''),
+          priority,
+          status,
+          currentDepartment: Department.QUERIES,
+          sourceDepartment: Department.QUERIES,
+          sharedDepartments: [Department.QUERIES],
+          conversation: Array.isArray(t.conversation) && t.conversation.length > 0
+            ? t.conversation
+            : (t.description ? [{
+                messageId: generateId('MSG'),
+                senderId: String(t.creator || 'USER'),
+                senderName: String(t.creatorName || 'User'),
+                senderRole: userType,
+                message: String(t.description),
+                timestamp: t.createdAt ? new Date(t.createdAt) : new Date()
+              }] : []),
+          internalNotes: [],
+          transferHistory: [],
+          createdAt: t.createdAt ? new Date(t.createdAt) : new Date(),
+          updatedAt: t.updatedAt ? new Date(t.updatedAt) : new Date()
+        });
+        syncedCount++;
+      } else {
+        if (Array.isArray(t.conversation) && t.conversation.length > (exists.conversation?.length || 0)) {
+          exists.conversation = t.conversation;
+          await exists.save();
+        }
+      }
+    }
+
+    return { syncedCount };
+  }
+
+  /**
+   * Push a message appended in Support Team query workbench back to the ecosystem `tickets` collection.
+   */
+  static async pushTicketMessageToEcosystem(
+    ticketId: string,
+    messagePayload: { messageId?: string; senderId?: string; senderName?: string; senderRole?: string; message: string; timestamp?: Date }
+  ): Promise<void> {
+    try {
+      const db = this.getDb();
+      await db.collection('tickets').updateOne(
+        { ticketId },
+        {
+          $push: {
+            conversation: {
+              sender: messagePayload.senderId || 'SUPPORT',
+              senderName: messagePayload.senderName || 'Support Executive',
+              role: messagePayload.senderRole || 'support',
+              message: messagePayload.message,
+              time: messagePayload.timestamp || new Date(),
+              _id: new mongoose.Types.ObjectId()
+            } as any
+          },
+          $set: { updatedAt: new Date() }
+        }
+      );
+    } catch (err) {
+      console.error('Failed to push ticket message to ecosystem:', err);
+    }
+  }
+
+  /**
+   * Push a status update (open, in_progress, resolved) back to the ecosystem `tickets` collection.
+   */
+  static async pushTicketStatusToEcosystem(ticketId: string, status: string): Promise<void> {
+    try {
+      const db = this.getDb();
+      await db.collection('tickets').updateOne(
+        { ticketId },
+        {
+          $set: {
+            status: status.toLowerCase(),
+            updatedAt: new Date()
+          }
+        }
+      );
+    } catch (err) {
+      console.error('Failed to push ticket status to ecosystem:', err);
+    }
   }
 }

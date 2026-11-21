@@ -195,7 +195,52 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
         )}
 
         {onStartDateChange && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select
+              value={(() => {
+                if (!startDate && !endDate) return 'All';
+                const today = new Date().toISOString().split('T')[0];
+                if (startDate === today && endDate === today) return 'Today';
+                const now = new Date();
+                const day = now.getDay();
+                const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(new Date().setDate(diffToMonday)).toISOString().split('T')[0];
+                if (startDate === monday && endDate === today) return 'This Week';
+                const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+                if (startDate === firstOfMonth && endDate === today) return 'This Month';
+                return 'Custom';
+              })()}
+              onChange={(e) => {
+                const preset = e.target.value;
+                const today = new Date().toISOString().split('T')[0];
+                if (preset === 'All') {
+                  onStartDateChange('');
+                  onEndDateChange?.('');
+                } else if (preset === 'Today') {
+                  onStartDateChange(today);
+                  onEndDateChange?.(today);
+                } else if (preset === 'This Week') {
+                  const now = new Date();
+                  const day = now.getDay();
+                  const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+                  const monday = new Date(new Date().setDate(diffToMonday)).toISOString().split('T')[0];
+                  onStartDateChange(monday);
+                  onEndDateChange?.(today);
+                } else if (preset === 'This Month') {
+                  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+                  onStartDateChange(firstOfMonth);
+                  onEndDateChange?.(today);
+                }
+              }}
+              aria-label="Date Range Period"
+              className="px-2.5 py-2 text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300"
+            >
+              <option value="All">All Time</option>
+              <option value="Today">Today</option>
+              <option value="This Week">This Week</option>
+              <option value="This Month">This Month</option>
+              <option value="Custom">Custom Range</option>
+            </select>
             <input
               type="date"
               value={startDate || ''}

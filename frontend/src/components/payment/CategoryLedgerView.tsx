@@ -82,7 +82,7 @@ export const CategoryLedgerView: React.FC<CategoryLedgerViewProps> = ({
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  const canExport = user?.role === 'overall_lead' || user?.role === 'payment_lead';
+  const canExport = user?.role === 'overall_lead' || user?.role === 'payment_lead' || user?.role === 'payment_employee';
 
   const buildQueryParams = (targetPage: number, includePagination = true) => {
     const q = new URLSearchParams();

@@ -14,7 +14,7 @@ router.get('/kpis', PaymentController.getPaymentKpis);
 router.get('/transactions', PaymentController.listTransactions);
 router.get(
   '/transactions/export',
-  requireRoles([Role.OVERALL_LEAD, Role.PAYMENT_LEAD]),
+  requireRoles([Role.OVERALL_LEAD, Role.PAYMENT_LEAD, Role.PAYMENT_EMPLOYEE]),
   PaymentController.exportTransactionsCsv
 );
 router.get('/transactions/:id', PaymentController.getTransactionById);

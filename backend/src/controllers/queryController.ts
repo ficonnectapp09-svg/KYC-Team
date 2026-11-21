@@ -6,6 +6,7 @@ import { QUERY_CATEGORIES, resolveQueryCategory } from '../config/categoryCatalo
 import { generateId, buildIdFilter } from '../utils/security';
 import { logAudit } from '../middleware/auditLogger';
 import { NotificationItem } from '../models/NotificationItem';
+import { ConnectEcosystemReader } from '../services/connectEcosystemReader';
 
 export class QueryController {
   private static buildScopeClause(currentUser: NonNullable<Request['user']>) {
@@ -52,6 +53,11 @@ export class QueryController {
 
   static async listQueries(req: Request, res: Response): Promise<any> {
     try {
+      try {
+        await ConnectEcosystemReader.syncEcosystemTickets();
+      } catch (syncErr) {
+        console.warn('Ecosystem ticket sync skipped:', syncErr);
+      }
       const {
         sourceCategory,
         userType,
@@ -175,6 +181,11 @@ export class QueryController {
 
   static async getQueryById(req: Request, res: Response): Promise<any> {
     try {
+      try {
+        await ConnectEcosystemReader.syncEcosystemTickets();
+      } catch (syncErr) {
+        console.warn('Ecosystem ticket sync skipped:', syncErr);
+      }
       const { id } = req.params;
       const currentUser = req.user!;
 
@@ -402,6 +413,17 @@ export class QueryController {
       query.lastUpdated = new Date();
       await query.save();
 
+      if (query.queryId.startsWith('TKT-')) {
+        await ConnectEcosystemReader.pushTicketMessageToEcosystem(query.queryId, {
+          messageId: generateId('MSG'),
+          senderId: currentUser.employeeId,
+          senderName: currentUser.name,
+          senderRole: currentUser.role,
+          message,
+          timestamp: new Date()
+        });
+      }
+
       return res.json({
         success: true,
         message: 'Message sent successfully.',
@@ -481,6 +503,10 @@ export class QueryController {
       query.lastUpdated = new Date();
 
       await query.save();
+
+      if (query.queryId.startsWith('TKT-')) {
+        await ConnectEcosystemReader.pushTicketStatusToEcosystem(query.queryId, 'resolved');
+      }
 
       await logAudit(
         req,
@@ -643,6 +669,10 @@ export class QueryController {
       });
       query.lastUpdated = new Date();
       await query.save();
+
+      if (query.queryId.startsWith('TKT-')) {
+        await ConnectEcosystemReader.pushTicketStatusToEcosystem(query.queryId, 'open');
+      }
 
       await logAudit(
         req,

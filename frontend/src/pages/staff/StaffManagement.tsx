@@ -894,22 +894,25 @@ export const StaffManagement: React.FC = () => {
               <input
                 type="text"
                 placeholder="Account Number"
+                autoComplete="off"
                 value={formData.bankAccountNumber}
-                onChange={e => setFormData({ ...formData, bankAccountNumber: e.target.value })}
+                onChange={e => setFormData(prev => ({ ...prev, bankAccountNumber: e.target.value }))}
                 className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
               />
               <input
                 type="text"
                 placeholder="IFSC Code"
+                autoComplete="off"
                 value={formData.bankIfsc}
-                onChange={e => setFormData({ ...formData, bankIfsc: e.target.value })}
+                onChange={e => setFormData(prev => ({ ...prev, bankIfsc: e.target.value }))}
                 className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
               />
               <input
                 type="text"
                 placeholder="Bank Name"
+                autoComplete="off"
                 value={formData.bankName}
-                onChange={e => setFormData({ ...formData, bankName: e.target.value })}
+                onChange={e => setFormData(prev => ({ ...prev, bankName: e.target.value }))}
                 className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
               />
             </div>
