@@ -1412,42 +1412,42 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               </div>
 
               {/* Accordion 6: Assignment & SLA Details */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('assignment')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-sky-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-sky-500 dark:text-sky-400" />
                     Assignment & Verification SLA
                   </span>
                   {openSections.assignment ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.assignment && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-2">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-2">
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div>
                         <span className="text-[9px] uppercase font-bold text-slate-500">Assigned Specialist</span>
-                        <div className="font-bold text-white mt-0.5">
+                        <div className="font-bold text-slate-900 dark:text-white mt-0.5">
                           {liveReq.assignedEmployeeName || 'Unassigned Queue'}
                         </div>
                       </div>
                       <div>
                         <span className="text-[9px] uppercase font-bold text-slate-500">Specialist ID</span>
-                        <div className="font-mono text-indigo-400 mt-0.5">
+                        <div className="font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
                           {liveReq.assignedEmployeeId || 'N/A'}
                         </div>
                       </div>
                       <div>
                         <span className="text-[9px] uppercase font-bold text-slate-500">Submission Date</span>
-                        <div className="text-slate-300 mt-0.5">
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5">
                           {new Date(liveReq.submissionDate).toLocaleString()}
                         </div>
                       </div>
                       <div>
                         <span className="text-[9px] uppercase font-bold text-slate-500">Registration Date</span>
-                        <div className="text-slate-300 mt-0.5">
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5">
                           {new Date(liveReq.registrationDate).toLocaleDateString()}
                         </div>
                       </div>
@@ -1457,20 +1457,20 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               </div>
 
               {/* Accordion 7: Official Attribution & Audit Trail */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSection('attribution')}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/40"
+                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800/40"
                 >
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                     Official Verification & Audit Trail
                   </span>
                   {openSections.attribution ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
                 {openSections.attribution && (
-                  <div className="p-3.5 pt-0 border-t border-slate-800/60 text-xs space-y-3">
+                  <div className="p-3.5 pt-0 border-t border-slate-200 dark:border-slate-800/60 text-xs space-y-3">
                     {/* Official Approver Attribution Card */}
                     {liveReq.status === 'Approved' && liveReq.approvedBy && (
                       <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 space-y-1.5">
@@ -1521,22 +1521,22 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         </span>
                         <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                           {(liveReq.approvalHistory || []).map((ev, i) => (
-                            <div key={i} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-[11px] space-y-0.5">
+                            <div key={i} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] space-y-0.5">
                               <div className="flex items-center justify-between">
                                 <span
                                   className={`font-bold text-[9px] px-1.5 py-0.2 rounded ${
                                     ev.action === 'APPROVED'
-                                      ? 'bg-emerald-900/60 text-emerald-300'
+                                      ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
                                       : ev.action === 'REJECTED'
-                                      ? 'bg-rose-900/60 text-rose-300'
-                                      : 'bg-indigo-900/60 text-indigo-300'
+                                      ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300'
+                                      : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300'
                                   }`}
                                 >
                                   {ev.action}
                                 </span>
                                 <span className="text-[9px] text-slate-500">{new Date(ev.timestamp).toLocaleString()}</span>
                               </div>
-                              <div className="text-slate-300">
+                              <div className="text-slate-700 dark:text-slate-300 font-medium">
                                 {ev.actorName} <span className="text-slate-500">({ev.actorRole})</span>
                               </div>
                               {ev.remarks && <div className="text-[10px] text-slate-400 italic">"{ev.remarks}"</div>}
@@ -1653,7 +1653,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           value={actionRemarks}
                           onChange={e => setActionRemarks(e.target.value)}
                           placeholder="e.g. All documents verified against original registration."
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1668,7 +1668,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                          className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
                         >
                           Back
                         </button>
@@ -1769,7 +1769,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           onChange={e => setActionReason(e.target.value)}
                           rows={3}
                           placeholder="Specify exact non-compliance reasons (e.g. Mismatched name on PAN vs Aadhaar, invalid GSTIN registration status)."
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500"
                         />
                       </div>
 
@@ -1785,7 +1785,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                          className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
                         >
                           Back
                         </button>
@@ -1795,23 +1795,23 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
                   {/* ESCALATE FORM */}
                   {actionMode === 'ESCALATE' && (
-                    <div className="p-3.5 rounded-2xl bg-purple-950/40 border border-purple-800/80 space-y-3">
+                    <div className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4" />
+                        <span className="font-bold text-purple-800 dark:text-purple-300 text-xs flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-purple-600" />
                           Escalate to KYC Team Lead
                         </span>
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="text-[11px] text-slate-400 hover:text-white"
+                          className="text-[11px] text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
                         >
                           Cancel
                         </button>
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 mb-1">
                           Escalation Notes for Team Lead
                         </label>
                         <textarea
@@ -1819,7 +1819,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           onChange={e => setActionReason(e.target.value)}
                           rows={2}
                           placeholder="Explain ambiguity or policy question requiring Lead review."
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
 
@@ -1867,7 +1867,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <select
                           value={selectedDocForReupload}
                           onChange={e => setSelectedDocForReupload(e.target.value)}
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                         >
                           {documents.map((d, i) => (
                             <option key={i} value={d.docType}>
@@ -1878,7 +1878,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 mb-1">
                           New Document Name
                         </label>
                         <input
@@ -1886,12 +1886,12 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           value={resubmitDocName}
                           onChange={e => setResubmitDocName(e.target.value)}
                           placeholder="e.g. pan_card_v2.png"
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 mb-1">
                           Document Asset URL
                         </label>
                         <input
@@ -1899,7 +1899,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           value={resubmitDocUrl}
                           onChange={e => setResubmitDocUrl(e.target.value)}
                           placeholder="https://res.cloudinary.com/... or /uploads/..."
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-500"
                         />
                       </div>
 

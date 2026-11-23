@@ -72,7 +72,18 @@ export class SalaryController {
       }
 
       if (salaryCycle && salaryCycle !== 'All') filter.salaryCycle = salaryCycle;
-      if (status && status !== 'All') filter.status = status;
+      if (status && status !== 'All') {
+        const s = String(status).toLowerCase();
+        if (s === 'pending' || s === 'pending approval' || s === 'submitted for overall approval') {
+          filter.status = { $in: [SalaryStatus.DRAFT, SalaryStatus.PREPARED, SalaryStatus.SUBMITTED_FOR_OVERALL_APPROVAL] };
+        } else if (s === 'approved') {
+          filter.status = { $in: [SalaryStatus.APPROVED, SalaryStatus.PROCESSING] };
+        } else if (s === 'paid' || s === 'disbursed') {
+          filter.status = SalaryStatus.PAID;
+        } else {
+          filter.status = status;
+        }
+      }
       if (periodLabel && periodLabel !== 'All') filter.periodLabel = periodLabel;
       if (startDate || endDate) {
         filter.createdAt = {};

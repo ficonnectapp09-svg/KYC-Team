@@ -826,6 +826,8 @@ export const PaymentManagement: React.FC = () => {
               icon={Banknote}
               color="royal"
               subtitle="All registered ledger entries"
+              onClick={() => setStatusFilter('All')}
+              isActive={statusFilter === 'All'}
             />
             <StatCard
               title="Pending Approval"
@@ -833,6 +835,8 @@ export const PaymentManagement: React.FC = () => {
               icon={Clock}
               color="yellow"
               subtitle="Pending checker review"
+              onClick={() => setStatusFilter(statusFilter === 'PENDING' || statusFilter === 'Pending' ? 'All' : 'PENDING')}
+              isActive={statusFilter === 'PENDING' || statusFilter === 'Pending'}
             />
             <StatCard
               title="In Progress"
@@ -840,6 +844,8 @@ export const PaymentManagement: React.FC = () => {
               icon={RefreshCw}
               color="sky"
               subtitle="Pending gateway settlement"
+              onClick={() => setStatusFilter(statusFilter === 'PROCESSING' || statusFilter === 'Processing' ? 'All' : 'PROCESSING')}
+              isActive={statusFilter === 'PROCESSING' || statusFilter === 'Processing'}
             />
             <StatCard
               title="Completed"
@@ -847,6 +853,8 @@ export const PaymentManagement: React.FC = () => {
               icon={CheckCircle2}
               color="emerald"
               subtitle="Successfully settled"
+              onClick={() => setStatusFilter(statusFilter === 'COMPLETED' || statusFilter === 'Completed' ? 'All' : 'COMPLETED')}
+              isActive={statusFilter === 'COMPLETED' || statusFilter === 'Completed'}
             />
             <StatCard
               title="Failed / On Hold"
@@ -854,6 +862,8 @@ export const PaymentManagement: React.FC = () => {
               icon={AlertTriangle}
               color="rose"
               subtitle="Requires review or retry"
+              onClick={() => setStatusFilter(statusFilter === 'HELD' || statusFilter === 'Failed' ? 'All' : 'HELD')}
+              isActive={statusFilter === 'HELD' || statusFilter === 'Failed'}
             />
           </div>
 
@@ -897,10 +907,12 @@ export const PaymentManagement: React.FC = () => {
                         contentStyle={{
                           backgroundColor: '#0F172A',
                           borderRadius: '12px',
-                          border: 'none',
+                          border: '1px solid #334155',
                           fontSize: '11px',
-                          color: '#fff'
+                          color: '#ffffff'
                         }}
+                        itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                        labelStyle={{ color: '#cbd5e1', fontWeight: 600 }}
                       />
                       <Area type="monotone" dataKey="initiated" stroke="#1D4ED8" strokeWidth={2} fillOpacity={1} fill="url(#colorInitiated)" />
                       <Area type="monotone" dataKey="completed" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorSettled)" />
@@ -926,37 +938,6 @@ export const PaymentManagement: React.FC = () => {
               title="Quick Actions"
               actions={paymentLeadActions}
             />
-          </div>
-
-          {/* Horizontal Payment Category & Party-Wise Tab Bar */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
-            {PAYMENT_NAV_CATEGORIES.map(cat => {
-              const isActive = activeCategory.key === cat.key;
-              const cnt = categoryCounts[cat.key];
-              return (
-                <button
-                  key={cat.key}
-                  type="button"
-                  onClick={() => navigate(`/payment/${cat.slug}`)}
-                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-[#1D4ED8] text-white shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span>{cat.label}</span>
-                  {typeof cnt === 'number' && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {cnt}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
           </div>
 
       {/* Main Payment Operations Header / Filter Bar (delegated when inside Income or Expenses) */}

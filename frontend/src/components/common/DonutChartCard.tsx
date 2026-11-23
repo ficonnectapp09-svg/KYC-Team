@@ -58,10 +58,12 @@ export const DonutChartCard: React.FC<DonutChartCardProps> = ({
                 contentStyle={{
                   backgroundColor: '#0F172A',
                   borderRadius: '12px',
-                  border: 'none',
+                  border: '1px solid #334155',
                   fontSize: '11px',
-                  color: '#fff'
+                  color: '#ffffff'
                 }}
+                itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                labelStyle={{ color: '#cbd5e1', fontWeight: 600 }}
               />
             </PieChart>
           </ResponsiveContainer>

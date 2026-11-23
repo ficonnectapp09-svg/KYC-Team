@@ -623,6 +623,11 @@ export const QueriesManagement: React.FC = () => {
               icon={MessageSquare}
               color="royal"
               subtitle="All registered cases"
+              onClick={() => {
+                setStatusFilter('All');
+                setPriorityFilter('All');
+              }}
+              isActive={statusFilter === 'All' && priorityFilter === 'All'}
             />
             <StatCard
               title="Open"
@@ -630,6 +635,8 @@ export const QueriesManagement: React.FC = () => {
               icon={Clock}
               color="yellow"
               subtitle="Unassigned / awaiting response"
+              onClick={() => setStatusFilter(statusFilter === 'New' ? 'All' : 'New')}
+              isActive={statusFilter === 'New'}
             />
             <StatCard
               title="In Progress"
@@ -637,6 +644,8 @@ export const QueriesManagement: React.FC = () => {
               icon={RefreshCw}
               color="sky"
               subtitle="Active investigation"
+              onClick={() => setStatusFilter(statusFilter === 'In Progress' ? 'All' : 'In Progress')}
+              isActive={statusFilter === 'In Progress'}
             />
             <StatCard
               title="Resolved"
@@ -644,6 +653,8 @@ export const QueriesManagement: React.FC = () => {
               icon={CheckCircle2}
               color="emerald"
               subtitle="Closed support tickets"
+              onClick={() => setStatusFilter(statusFilter === 'Resolved' ? 'All' : 'Resolved')}
+              isActive={statusFilter === 'Resolved'}
             />
             <StatCard
               title="Escalated"
@@ -651,6 +662,8 @@ export const QueriesManagement: React.FC = () => {
               icon={AlertTriangle}
               color="rose"
               subtitle="Transferred or urgent"
+              onClick={() => setPriorityFilter(priorityFilter === 'Urgent' ? 'All' : 'Urgent')}
+              isActive={priorityFilter === 'Urgent'}
             />
           </div>
 
@@ -686,37 +699,6 @@ export const QueriesManagement: React.FC = () => {
               title="Quick Actions"
               actions={queriesLeadActions}
             />
-          </div>
-
-          {/* Horizontal User-Type Query Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
-            {QUERY_NAV_CATEGORIES.map(cat => {
-              const isActive = activeCategory.key === cat.key;
-              const cnt = categoryCounts[cat.key];
-              return (
-                <button
-                  key={cat.key}
-                  type="button"
-                  onClick={() => navigate(`/queries/${cat.slug}`)}
-                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-[#1D4ED8] text-white shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span>{cat.label}</span>
-                  {typeof cnt === 'number' && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {cnt}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
           </div>
 
       {/* Common Header, Scoped KPIs & Unified Filter Bar */}

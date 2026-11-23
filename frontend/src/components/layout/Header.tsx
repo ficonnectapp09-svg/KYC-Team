@@ -24,6 +24,8 @@ import {
 
 interface HeaderProps {
   onToggleSidebar: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -114,7 +116,7 @@ function resolveHeaderMeta(pathname: string, user: any): { title: string; subtit
   };
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isCollapsed, onToggleCollapse }) => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
@@ -236,7 +238,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-4 sm:px-6 backdrop-blur-md">
-      {/* Left: Mobile Toggle, Breadcrumb Title & Global Search */}
+      {/* Left: Mobile Toggle, Desktop Collapse, Breadcrumb Title & Global Search */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
           onClick={onToggleSidebar}
@@ -244,6 +246,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         >
           <Menu className="w-5 h-5" />
         </button>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className="hidden lg:flex p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
         <div className="hidden md:block shrink-0">
           <div className="text-base font-black text-slate-900 dark:text-white leading-tight tracking-tight">
             {headerMeta.title}

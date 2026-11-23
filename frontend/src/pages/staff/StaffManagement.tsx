@@ -528,41 +528,6 @@ export const StaffManagement: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* Section 30 E: Role-Wise Staff Directory Sub-Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {visibleStaffCategories.map((cat) => {
-              const isSelected = activeCategory.key === cat.key;
-              const cnt = categoryCounts[cat.key];
-              return (
-                <button
-                  key={cat.key}
-                  onClick={() => {
-                    setActiveTab('directory');
-                    navigate(cat.slug === 'all' ? '/staff' : `/staff/${cat.slug}`);
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border transition-all ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-300'
-                  }`}
-                >
-                  <span>{cat.label}</span>
-                  {cnt !== undefined && (
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        isSelected
-                          ? 'bg-indigo-500 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                      }`}
-                    >
-                      {cnt}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
           <ErrorBanner message={loadError} onRetry={() => loadEmployees(page)} />
 
           <DepartmentTabHeader
@@ -571,8 +536,11 @@ export const StaffManagement: React.FC = () => {
             departmentBadge={user?.department === 'Overall' ? 'All Departments' : `${user?.department || 'Staff'} Directory`}
             summary={summary}
             pendingLabel="Inactive / Leave"
+            pendingStatusValue="inactive"
             inProgressLabel="Suspended"
+            inProgressStatusValue="suspended"
             completedLabel="Active Staff"
+            completedStatusValue="active"
             search={search}
             onSearchChange={setSearch}
             searchPlaceholder="Search Employee ID, name, email, phone, designation..."
@@ -1134,22 +1102,108 @@ export const StaffManagement: React.FC = () => {
 
             {profileTab === 'info' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-slate-400 font-bold text-[10px] uppercase">Email</div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.email}</div>
+                {/* Contact & Location */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Contact & Workplace Details
                   </div>
-                  <div>
-                    <div className="text-slate-400 font-bold text-[10px] uppercase">Phone</div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.phone}</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Email</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.email}>{selectedEmp.email}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Phone</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.phone || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Work Location</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.workLocation || 'Main Office'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Residential Address</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.address || 'Not Provided'}>{selectedEmp.address || 'Not Provided'}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-slate-400 font-bold text-[10px] uppercase">Work Location</div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.workLocation}</div>
+                </div>
+
+                {/* Employment & Role Context */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Employment & Organizational Hierarchy
                   </div>
-                  <div>
-                    <div className="text-slate-400 font-bold text-[10px] uppercase">Salary Cycle</div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.salaryCycle}</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Department</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.department}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Designation / Role</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.designation} ({selectedEmp.role})</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Employment Type</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.employmentType || 'Full-time'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Joining Date</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                        {selectedEmp.joiningDate ? new Date(selectedEmp.joiningDate).toLocaleDateString() : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Reporting Lead</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.reportingLead || 'Department Lead'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Salary Cycle</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.salaryCycle || 'Monthly'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Operational Permissions */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Authorized Permissions & Operational Scopes
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedEmp.permissions && selectedEmp.permissions.length > 0 ? (
+                      selectedEmp.permissions.map((p, idx) => (
+                        <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          {p}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-400 text-xs">Standard operational scope for {selectedEmp.role}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bank & Payroll Info */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Disbursement & Payroll Bank Details
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Bank Name</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.bankName || 'Not Provided'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Holder</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.accountHolder || selectedEmp.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Number</div>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                        {selectedEmp.bankDetails?.accountNumber ? `••••${selectedEmp.bankDetails.accountNumber.slice(-4)}` : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">IFSC Code</div>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.ifscCode || 'N/A'}</div>
+                    </div>
                   </div>
                 </div>
                 {isLead && (

@@ -247,10 +247,12 @@ export const OverallDashboard: React.FC = () => {
                   contentStyle={{
                     borderRadius: '12px',
                     background: '#0B1727',
-                    border: 'none',
-                    color: '#fff',
+                    border: '1px solid #334155',
+                    color: '#ffffff',
                     fontSize: '11px'
                   }}
+                  itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                  labelStyle={{ color: '#cbd5e1', fontWeight: 600 }}
                 />
                 <Area type="monotone" dataKey="kyc" name="KYC" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorKyc)" />
                 <Area type="monotone" dataKey="payment" name="Payment" stroke="#F59E0B" strokeWidth={2.5} fillOpacity={1} fill="url(#colorPayment)" />
@@ -536,6 +538,8 @@ export const OverallDashboard: React.FC = () => {
                 <Tooltip
                   formatter={(val: number) => [`₹${val.toLocaleString()}`, 'Amount']}
                   contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: '#fff' }}
+                  itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                  labelStyle={{ color: '#cbd5e1', fontWeight: 600 }}
                 />
                 <Bar dataKey="amount" fill="#4f46e5" radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -563,6 +567,8 @@ export const OverallDashboard: React.FC = () => {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: '#fff' }}
+                  itemStyle={{ color: '#ffffff', fontWeight: 600 }}
+                  labelStyle={{ color: '#cbd5e1', fontWeight: 600 }}
                 />
                 <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
               </BarChart>

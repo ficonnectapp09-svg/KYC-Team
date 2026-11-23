@@ -32,5 +32,18 @@ router.get(
   ReportController.getQueriesReport
 );
 
+router.get(
+  '/staff',
+  requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.PAYMENT_LEAD, Role.QUERIES_LEAD]),
+  ReportController.getStaffReport
+);
+
+// Row-level CSV Export across operational modules
+router.get(
+  '/export-csv',
+  requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.PAYMENT_LEAD, Role.QUERIES_LEAD]),
+  ReportController.exportReportCSV
+);
+
 export default router;
 

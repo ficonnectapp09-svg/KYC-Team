@@ -54,6 +54,7 @@ export const SalaryManagement: React.FC = () => {
   const [staffList, setStaffList] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
@@ -87,6 +88,7 @@ export const SalaryManagement: React.FC = () => {
       q.append('page', String(targetPage));
       q.append('limit', String(limit));
       if (search) q.append('search', search);
+      if (statusFilter && statusFilter !== 'All') q.append('status', statusFilter);
 
       const [recRes, kpiRes, structRes] = await Promise.all([
         apiFetch<any>(`/salary/records?${q.toString()}`),
@@ -119,7 +121,7 @@ export const SalaryManagement: React.FC = () => {
     setViewMode('records');
     setPage(1);
     loadData(1);
-  }, [user, activeCategory.key, limit]);
+  }, [user, activeCategory.key, limit, statusFilter]);
 
   const handlePrepareSalary = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,36 +267,6 @@ export const SalaryManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Section 31 E Sub-Navigation Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
-        {SALARY_NAV_CATEGORIES.map(cat => {
-          const isSelected = activeCategory.key === cat.key && viewMode === 'records';
-          const cnt = categoryCounts[cat.key];
-          return (
-            <button
-              key={cat.key}
-              type="button"
-              onClick={() => {
-                setViewMode('records');
-                navigate(`/salary/${cat.slug}`);
-              }}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                isSelected
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <span>{cat.label}</span>
-              {typeof cnt === 'number' && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>
-                  {cnt}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
       {feedback && (
         <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200">
           <span className="font-semibold">{feedback}</span>
@@ -317,6 +289,8 @@ export const SalaryManagement: React.FC = () => {
           subtitle={`${kpis.monthlyCount || 0} Monthly Statements`}
           icon={Banknote}
           variant="indigo"
+          onClick={() => setStatusFilter('All')}
+          isActive={statusFilter === 'All'}
         />
         <StatCard
           title="Weekly Commitment"
@@ -324,6 +298,8 @@ export const SalaryManagement: React.FC = () => {
           subtitle={`${kpis.weeklyCount || 0} Weekly Statements`}
           icon={Clock}
           variant="sky"
+          onClick={() => setStatusFilter(statusFilter === 'Weekly' ? 'All' : 'Weekly')}
+          isActive={statusFilter === 'Weekly'}
         />
         <StatCard
           title="Pending Overall Approval"
@@ -331,6 +307,8 @@ export const SalaryManagement: React.FC = () => {
           subtitle={`${kpis.pendingRecordsCount || 0} Awaiting Sign-off | ${kpis.approvedRecordsCount || 0} Approved (₹${(kpis.totalApproved || 0).toLocaleString()})`}
           icon={Lock}
           variant="amber"
+          onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')}
+          isActive={statusFilter === 'Pending'}
         />
         <StatCard
           title="Total Salaries Paid"
@@ -338,6 +316,8 @@ export const SalaryManagement: React.FC = () => {
           subtitle={`${kpis.paidRecordsCount || 0} Disbursed | Excluded from Payment Expenses`}
           icon={CheckCircle2}
           variant="emerald"
+          onClick={() => setStatusFilter(statusFilter === 'Paid' ? 'All' : 'Paid')}
+          isActive={statusFilter === 'Paid'}
         />
       </div>
 

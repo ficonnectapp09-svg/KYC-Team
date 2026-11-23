@@ -249,19 +249,119 @@ export class KycController {
         }
 
         if (v) {
-          const vState = v.state || v.assignedState || '';
-          const vDistrict = v.district || v.assignedDistrict || '';
-          const vDivision = v.division || v.assignedDivision || '';
-          const vPincode = v.pincode || '';
-          const vTaluk = v.taluk || '';
+          // Fall back to creator user in 'users' collection if address or documents are missing on vendor
+          let creatorUser: any = null;
+          if (v.createdBy || v.userId || request.phone) {
+            const userQueries: any[] = [];
+            if (v.createdBy) userQueries.push({ _id: v.createdBy }, { id: v.createdBy });
+            if (v.userId) userQueries.push({ _id: v.userId }, { id: v.userId }, { userId: v.userId });
+            if (request.phone) userQueries.push({ phone: request.phone }, { mobile: request.phone });
+            creatorUser = await db.collection('users').findOne({ $or: userQueries });
+          }
+
+          let vState = v.state || v.assignedState || '';
+          let vDistrict = v.district || v.assignedDistrict || '';
+          let vDivision = v.division || v.assignedDivision || '';
+          let vPincode = v.pincode || '';
+          let vTaluk = v.taluk || '';
+
+          // Resolve location IDs from states, districts, divisions, pincodes collections
+          if ((!vState || !vDistrict || !vPincode) && (v.stateId || v.districtId || v.divisionId || v.pincodeId)) {
+            try {
+              if (v.stateId) {
+                const sDoc = await db.collection('states').findOne({
+                  $or: [
+                    { id: v.stateId },
+                    { _id: v.stateId },
+                    ...(mongoose.Types.ObjectId.isValid(v.stateId) ? [{ _id: new mongoose.Types.ObjectId(v.stateId) }] : [])
+                  ]
+                });
+                if (sDoc) vState = sDoc.name || sDoc.stateName || vState;
+              }
+              if (v.districtId) {
+                const dDoc = await db.collection('districts').findOne({
+                  $or: [
+                    { id: v.districtId },
+                    { _id: v.districtId },
+                    ...(mongoose.Types.ObjectId.isValid(v.districtId) ? [{ _id: new mongoose.Types.ObjectId(v.districtId) }] : [])
+                  ]
+                });
+                if (dDoc) vDistrict = dDoc.name || dDoc.districtName || vDistrict;
+              }
+              if (v.divisionId) {
+                const divDoc = await db.collection('divisions').findOne({
+                  $or: [
+                    { id: v.divisionId },
+                    { _id: v.divisionId },
+                    ...(mongoose.Types.ObjectId.isValid(v.divisionId) ? [{ _id: new mongoose.Types.ObjectId(v.divisionId) }] : [])
+                  ]
+                });
+                if (divDoc) vDivision = divDoc.name || divDoc.divisionName || vDivision;
+              }
+              if (v.pincodeId) {
+                const pDoc = await db.collection('pincodes').findOne({
+                  $or: [
+                    { id: v.pincodeId },
+                    { _id: v.pincodeId },
+                    ...(mongoose.Types.ObjectId.isValid(v.pincodeId) ? [{ _id: new mongoose.Types.ObjectId(v.pincodeId) }] : [])
+                  ]
+                });
+                if (pDoc) vPincode = pDoc.pincode || pDoc.code || pDoc.name || vPincode;
+              }
+            } catch (locErr) {
+              console.warn('Location resolution notice:', locErr);
+            }
+          }
+
+          const rawFullAddress = v.location?.address || v.address || creatorUser?.address || '';
+
+          // Merge creator user documents if vendor record lacks standard identity documents
+          if (creatorUser?.documents && typeof creatorUser.documents === 'object') {
+            const uDocs = creatorUser.documents;
+            enriched.documents = enriched.documents || [];
+            const existingTypes = new Set(enriched.documents.map((d: any) => (d.docType || '').toLowerCase()));
+
+            const addIfMissing = (typeKey: string, typeLabel: string, fileUrl?: string, fileName?: string) => {
+              if (fileUrl && !existingTypes.has(typeKey.toLowerCase()) && !existingTypes.has(typeLabel.toLowerCase())) {
+                existingTypes.add(typeLabel.toLowerCase());
+                enriched.documents.push({
+                  docType: typeLabel,
+                  docName: fileName || `${typeLabel}.png`,
+                  docUrl: fileUrl,
+                  version: 1,
+                  status: 'Verified',
+                  remarks: 'Synchronized from registered applicant profile',
+                  uploadedAt: uDocs.uploadedAt || v.createdAt || new Date()
+                });
+              }
+            };
+
+            addIfMissing('pan_card', 'PAN Card', uDocs.panCard || uDocs.panUrl, uDocs.panFileName || 'PAN Card.png');
+            addIfMissing('aadhar_card', 'Aadhaar Card', uDocs.aadharCard || uDocs.aadharUrl, uDocs.aadharFileName || 'Aadhaar Card.png');
+            addIfMissing('bank_passbook', 'Bank Passbook / Cheque', uDocs.bankPassbook || uDocs.bankUrl, uDocs.bankFileName || 'Bank Passbook.png');
+            addIfMissing('digital_signature', 'Digital Signature', uDocs.digitalSignature || uDocs.signatureUrl, uDocs.signatureFileName || 'Digital Signature.png');
+          }
+
+          // If storefront photo exists with generic mime type 'image/jpeg', give it a professional display label
+          if (Array.isArray(enriched.documents)) {
+            enriched.documents = enriched.documents.map((d: any) => {
+              if (d.docType === 'image/jpeg' || d.docType === 'image/png') {
+                return {
+                  ...d,
+                  docType: d.docName?.includes('Storefront') ? 'Storefront Image' : 'Storefront On-Ground Photo'
+                };
+              }
+              return d;
+            });
+          }
 
           enriched.applicantDetails = {
             ...enriched.applicantDetails,
             businessName: v.businessName || v.storeType || enriched.applicantDetails.businessName || '',
-            ownerName: v.ownerName || v.name || v.contactPerson || enriched.applicantName,
-            phone: v.phone || enriched.phone,
-            alternatePhone: v.alternatePhone || 'N/A',
-            email: v.email || enriched.email,
+            ownerName: v.ownerName || v.name || creatorUser?.name || v.contactPerson || enriched.applicantName,
+            phone: v.phone || v.mobile || creatorUser?.phone || enriched.phone,
+            alternatePhone: v.alternatePhone || creatorUser?.alternatePhone || 'N/A',
+            email: v.email || creatorUser?.email || enriched.email,
             category: v.category || v.storeType || 'Services',
             subCategory: v.subCategory || v.subcategory || v.category || '',
             storeType: v.storeType || v.category || '',
@@ -269,7 +369,7 @@ export class KycController {
             website: v.website || '',
             companyRegNo: v.companyRegNo || v.cin || '',
             gst: v.gst || v.gstNumber || enriched.applicantDetails.gst || '',
-            gstStatus: v.gstStatus || (v.gst ? 'Registered' : 'Unregistered'),
+            gstStatus: v.gstStatus || (v.gst || v.gstNumber ? 'Registered' : 'Unregistered'),
             msmeStatus: v.msmeStatus || (v.msmeNumber ? 'Registered' : 'Not Registered'),
             msmeNumber: v.msmeNumber || '',
             state: vState,
@@ -278,6 +378,7 @@ export class KycController {
             taluk: vTaluk,
             pincode: vPincode,
             territoryFormatted: [vDivision, vDistrict, vState, vPincode ? `(${vPincode})` : ''].filter(Boolean).join(', ') || vState || 'Not Provided',
+            jurisdiction: [vDivision, vDistrict, vState].filter(Boolean).join(', ') || 'General Operational Area',
             address: {
               doorNo: v.buildingNo || v.doorNo || '',
               street: v.streetName || v.street || '',
@@ -286,10 +387,10 @@ export class KycController {
               district: vDistrict,
               state: vState,
               pincode: vPincode,
-              fullAddress: v.location?.address || v.address || ''
+              fullAddress: rawFullAddress
             },
             bankDetails: v.bankDetails || {
-              accountHolder: v.accountHolder || v.ownerName || enriched.applicantName,
+              accountHolder: v.accountHolder || v.accountHolderName || v.ownerName || creatorUser?.name || enriched.applicantName,
               bankName: v.bankName || 'State Bank of India',
               accountNumber: v.accountNumber ? maskBankAccount(String(v.accountNumber)) : '••••••••7812',
               ifscCode: v.ifscCode || v.ifsc || 'SBIN0001234',
@@ -311,8 +412,8 @@ export class KycController {
               pincode: vPincode
             } : null),
             pincodeAdminApproval: v.pincodeAdminApproval || null,
-            panNumberMasked: v.panNumber ? maskPan(String(v.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••9012•'),
-            aadhaarNumberMasked: v.aadhaarNumber ? maskAadhaar(String(v.aadhaarNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 8812')
+            panNumberMasked: (v.panNumber || creatorUser?.documents?.panNumber) ? maskPan(String(v.panNumber || creatorUser?.documents?.panNumber)) : (enriched.applicantDetails.panNumberMasked || '•••••9012•'),
+            aadhaarNumberMasked: (v.aadhaarNumber || creatorUser?.documents?.aadharNumber) ? maskAadhaar(String(v.aadhaarNumber || creatorUser?.documents?.aadharNumber)) : (enriched.applicantDetails.aadhaarNumberMasked || '•••• •••• 8812')
           };
         }
       } else if (appType === ApplicantType.AGENT) {
@@ -1411,14 +1512,31 @@ export class KycController {
       const p = Math.max(1, parseInt(page as string, 10) || 1);
       const l = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
 
-      const [tickets, total] = await Promise.all([
+      const [tickets, total, allTransferred] = await Promise.all([
         QueryTicket.find(filter)
           .sort({ 'transferHistory.transferredAt': -1, updatedAt: -1 })
           .skip((p - 1) * l)
           .limit(l)
           .lean(),
-        QueryTicket.countDocuments(filter)
+        QueryTicket.countDocuments(filter),
+        QueryTicket.find({
+          currentDepartment: Department.KYC,
+          'transferHistory.0': { $exists: true }
+        }).select('status').lean()
       ]);
+
+      const summary = {
+        totalCount: allTransferred.length,
+        pendingCount: allTransferred.filter((t: any) =>
+          ['New', 'Waiting for Response', 'Overdue', 'Unassigned'].includes(t.status)
+        ).length,
+        inProgressCount: allTransferred.filter((t: any) =>
+          ['In Progress', 'Assigned', 'Under KYC Verification', 'IN_PROGRESS'].includes(t.status)
+        ).length,
+        completedCount: allTransferred.filter((t: any) =>
+          ['Resolved', 'RESOLVED', 'Completed'].includes(t.status)
+        ).length
+      };
 
       return res.json({
         success: true,
@@ -1426,7 +1544,8 @@ export class KycController {
         total,
         page: p,
         limit: l,
-        totalPages: Math.ceil(total / l)
+        totalPages: Math.ceil(total / l),
+        summary
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

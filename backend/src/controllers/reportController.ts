@@ -438,5 +438,216 @@ export class ReportController {
       return res.status(500).json({ success: false, message: error.message });
     }
   }
+
+  /**
+   * Departmental Staff Performance & Headcount Distribution
+   */
+  static async getStaffReport(req: Request, res: Response): Promise<any> {
+    try {
+      const [byDepartment, byRole, byStatus, totalStaff] = await Promise.all([
+        Employee.aggregate([{ $group: { _id: '$department', count: { $sum: 1 } } }]),
+        Employee.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+        Employee.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+        Employee.countDocuments()
+      ]);
+
+      const activeCount = byStatus.find((s) => s._id === 'active')?.count || 0;
+      const inactiveCount = byStatus.find((s) => s._id === 'inactive')?.count || 0;
+      const suspendedCount = byStatus.find((s) => s._id === 'suspended')?.count || 0;
+
+      return res.json({
+        success: true,
+        data: {
+          totalStaff,
+          activeCount,
+          inactiveCount,
+          suspendedCount,
+          byDepartment,
+          byRole,
+          byStatus
+        }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Row-level CSV Export across KYC, Payments, Queries, and Staff modules
+   */
+  static async exportReportCSV(req: Request, res: Response): Promise<any> {
+    try {
+      const moduleType = String(req.query.module || 'kyc').toLowerCase();
+      let csvContent = '';
+      const nowStr = new Date().toISOString().slice(0, 10);
+
+      const sanitizeCsvField = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      if (moduleType === 'kyc') {
+        const records = await KycRequest.find()
+          .sort({ submissionDate: -1 })
+          .limit(1000)
+          .lean();
+
+        const headers = [
+          'Request ID',
+          'Applicant ID',
+          'Applicant Name',
+          'Applicant Type',
+          'Phone',
+          'Email',
+          'Status',
+          'Priority',
+          'Assigned Officer',
+          'Submission Date',
+          'Verified By',
+          'Verification Remarks'
+        ];
+
+        const rows = records.map((r: any) => [
+          sanitizeCsvField(r.requestId),
+          sanitizeCsvField(r.applicantId),
+          sanitizeCsvField(r.applicantName),
+          sanitizeCsvField(r.applicantType),
+          sanitizeCsvField(r.phone),
+          sanitizeCsvField(r.email),
+          sanitizeCsvField(r.status),
+          sanitizeCsvField(r.priority),
+          sanitizeCsvField(r.assignedEmployeeId || 'Unassigned'),
+          sanitizeCsvField(r.submissionDate ? new Date(r.submissionDate).toISOString() : ''),
+          sanitizeCsvField(r.approvedBy?.name || r.rejectedBy?.name || ''),
+          sanitizeCsvField(r.verificationRemarks || '')
+        ]);
+
+        csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+      } else if (moduleType === 'payment' || moduleType === 'financial') {
+        const records = await PaymentTransaction.find()
+          .sort({ createdAt: -1 })
+          .limit(1000)
+          .lean();
+
+        const headers = [
+          'Transaction ID',
+          'Reference ID',
+          'Transaction Type',
+          'Financial Classification',
+          'Final Amount (INR)',
+          'Status',
+          'From Party',
+          'To Party',
+          'Payment Method',
+          'Maker Name',
+          'Checker Name',
+          'Created At',
+          'Settled At'
+        ];
+
+        const rows = records.map((t: any) => [
+          sanitizeCsvField(t.transactionId),
+          sanitizeCsvField(t.referenceId),
+          sanitizeCsvField(t.transactionType),
+          sanitizeCsvField(t.financialClassification),
+          sanitizeCsvField(t.finalAmount),
+          sanitizeCsvField(t.status),
+          sanitizeCsvField(t.fromParty?.name || ''),
+          sanitizeCsvField(t.toParty?.name || ''),
+          sanitizeCsvField(t.paymentMethod || 'BANK_TRANSFER'),
+          sanitizeCsvField(t.maker?.name || ''),
+          sanitizeCsvField(t.checker?.name || ''),
+          sanitizeCsvField(t.createdAt ? new Date(t.createdAt).toISOString() : ''),
+          sanitizeCsvField(t.settledAt ? new Date(t.settledAt).toISOString() : '')
+        ]);
+
+        csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+      } else if (moduleType === 'queries') {
+        const records = await QueryTicket.find()
+          .sort({ createdAt: -1 })
+          .limit(1000)
+          .lean();
+
+        const headers = [
+          'Ticket ID',
+          'User Name',
+          'User Type',
+          'User ID',
+          'Category',
+          'Subject',
+          'Priority',
+          'Status',
+          'Current Department',
+          'Source Department',
+          'Assigned Employee ID',
+          'Created At',
+          'Last Updated',
+          'Resolution Date'
+        ];
+
+        const rows = records.map((q: any) => [
+          sanitizeCsvField(q.queryId),
+          sanitizeCsvField(q.userName),
+          sanitizeCsvField(q.userType),
+          sanitizeCsvField(q.userId),
+          sanitizeCsvField(q.category),
+          sanitizeCsvField(q.subject),
+          sanitizeCsvField(q.priority),
+          sanitizeCsvField(q.status),
+          sanitizeCsvField(q.currentDepartment),
+          sanitizeCsvField(q.sourceDepartment),
+          sanitizeCsvField(q.assignedEmployeeId || 'Unassigned'),
+          sanitizeCsvField(q.createdAt ? new Date(q.createdAt).toISOString() : ''),
+          sanitizeCsvField(q.lastUpdated ? new Date(q.lastUpdated).toISOString() : ''),
+          sanitizeCsvField(q.resolvedAt ? new Date(q.resolvedAt).toISOString() : '')
+        ]);
+
+        csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+      } else if (moduleType === 'staff') {
+        const records = await Employee.find().sort({ employeeId: 1 }).lean();
+
+        const headers = [
+          'Employee ID',
+          'Full Name',
+          'Email',
+          'Phone',
+          'Department',
+          'Role',
+          'Designation',
+          'Employment Type',
+          'Work Location',
+          'Status',
+          'Salary Cycle',
+          'Joining Date'
+        ];
+
+        const rows = records.map((e: any) => [
+          sanitizeCsvField(e.employeeId),
+          sanitizeCsvField(e.name),
+          sanitizeCsvField(e.email),
+          sanitizeCsvField(e.phone),
+          sanitizeCsvField(e.department),
+          sanitizeCsvField(e.role),
+          sanitizeCsvField(e.designation),
+          sanitizeCsvField(e.employmentType),
+          sanitizeCsvField(e.workLocation),
+          sanitizeCsvField(e.status),
+          sanitizeCsvField(e.salaryCycle),
+          sanitizeCsvField(e.joiningDate ? new Date(e.joiningDate).toISOString().slice(0, 10) : '')
+        ]);
+
+        csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+      } else {
+        return res.status(400).json({ success: false, message: `Unsupported report module: ${moduleType}` });
+      }
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="fic_backoffice_${moduleType}_report_${nowStr}.csv"`);
+      return res.status(200).send(csvContent);
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
 }
 
