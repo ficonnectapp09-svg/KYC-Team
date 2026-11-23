@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu,
@@ -40,38 +40,78 @@ const ROUTE_TITLES: Record<string, string> = {
   '/settings': 'Settings'
 };
 
-function resolveDynamicTitle(pathname: string): string {
-  if (ROUTE_TITLES[pathname]) return ROUTE_TITLES[pathname];
-  if (pathname.startsWith('/kyc/')) {
-    const slug = pathname.replace('/kyc/', '');
-    const cat = KYC_NAV_CATEGORIES.find(c => c.slug === slug);
-    return cat ? `KYC Operations — ${cat.label}` : 'KYC Operations';
+function resolveHeaderMeta(pathname: string, user: any): { title: string; subtitle: string } {
+  const role = user?.role || '';
+  if (pathname === '/overall') {
+    return {
+      title: 'Total Operations Dashboard',
+      subtitle: 'Complete overview of KYC, Payments, Queries and Support'
+    };
   }
-  if (pathname.startsWith('/payment/')) {
-    const slug = pathname.replace('/payment/', '');
-    if (slug.startsWith('income/')) {
-      const sub = INCOME_SUB_CATEGORIES.find(c => c.slug === slug.replace('income/', ''));
-      return sub ? `Payment Income — ${sub.label}` : 'Payment Operations — Income';
+  if (pathname.startsWith('/kyc')) {
+    if (role === 'kyc_employee') {
+      return {
+        title: 'My KYC Dashboard',
+        subtitle: 'Process assigned KYC verifications'
+      };
     }
-    if (slug.startsWith('expenses/')) {
-      const sub = EXPENSE_SUB_CATEGORIES.find(c => c.slug === slug.replace('expenses/', ''));
-      return sub ? `Payment Expenses — ${sub.label}` : 'Payment Operations — Expenses';
+    return {
+      title: 'KYC Operations Dashboard',
+      subtitle: 'Monitor KYC verification, re-uploads and team performance'
+    };
+  }
+  if (pathname.startsWith('/payment')) {
+    if (role === 'payment_employee') {
+      return {
+        title: 'My Payment Dashboard',
+        subtitle: 'Process payment requests and approvals'
+      };
     }
-    const cat = PAYMENT_NAV_CATEGORIES.find(c => c.slug === slug);
-    return cat ? `Payment Operations — ${cat.label}` : 'Payment Operations';
+    return {
+      title: 'Payment Operations Dashboard',
+      subtitle: 'Track payment verifications, approvals and settlements'
+    };
   }
-  if (pathname.startsWith('/salary/')) {
-    const slug = pathname.replace('/salary/', '');
-    const cat = SALARY_NAV_CATEGORIES.find(c => c.slug === slug);
-    return cat ? `Salary Management — ${cat.label}` : 'Salary Management';
+  if (pathname.startsWith('/queries')) {
+    if (role === 'queries_employee') {
+      return {
+        title: 'Queries Operations Dashboard',
+        subtitle: role === 'queries_employee' ? 'Resolve assigned customer & vendor support tickets' : 'Manage customer, vendor and partner queries'
+      };
+    }
+    return {
+      title: 'Queries Operations Dashboard',
+      subtitle: 'Manage customer, vendor and partner queries'
+    };
   }
-  if (pathname.startsWith('/queries/')) {
-    const slug = pathname.replace('/queries/', '');
-    const cat = QUERY_NAV_CATEGORIES.find(c => c.slug === slug);
-    return cat ? `Queries Operations — ${cat.label}` : 'Queries Operations';
+  if (pathname.startsWith('/staff')) {
+    return {
+      title: 'Staff Directory',
+      subtitle: 'Manage backoffice personnel, roles & permissions'
+    };
   }
-  if (pathname.startsWith('/staff/')) return 'Staff Directory';
-  return 'Connect Backoffice';
+  if (pathname.startsWith('/salary')) {
+    return {
+      title: 'Salary Management',
+      subtitle: 'Monthly payroll cycles, structures & disbursements'
+    };
+  }
+  if (pathname.startsWith('/tasks')) {
+    return {
+      title: 'Task Management',
+      subtitle: 'Cross-functional operational task allocations'
+    };
+  }
+  if (pathname.startsWith('/reports')) {
+    return {
+      title: 'Reports & Analytics',
+      subtitle: 'Enterprise audit exports & performance metrics'
+    };
+  }
+  return {
+    title: ROUTE_TITLES[pathname] || 'Support Operations',
+    subtitle: `${user?.department || 'Operations'} — Live Telemetry`
+  };
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
@@ -93,7 +133,34 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     tasks: any[];
   } | null>(null);
 
-  const pageTitle = resolveDynamicTitle(location.pathname);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close notification popover & search dropdown on outside click or Escape key
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifMenu(false);
+      }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchResults(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowNotifMenu(false);
+        setSearchResults(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const headerMeta = resolveHeaderMeta(location.pathname, user);
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
@@ -178,23 +245,23 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <Menu className="w-5 h-5" />
         </button>
         <div className="hidden md:block shrink-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Connect Backoffice / {user?.department || 'Operations'}
+          <div className="text-base font-black text-slate-900 dark:text-white leading-tight tracking-tight">
+            {headerMeta.title}
           </div>
-          <div className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
-            {pageTitle}
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {headerMeta.subtitle}
           </div>
         </div>
 
         {/* Global Search Bar */}
-        <div className="relative ml-2 sm:ml-4 max-w-xs w-full hidden sm:block">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <div ref={searchContainerRef} className="relative ml-2 sm:ml-4 max-w-sm w-full hidden sm:block">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Global search (KYC, TXN, QRY, Staff)..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/70 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Search by ID, user, request, amount..."
+            className="w-full pl-9 pr-4 py-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]"
           />
           {searchError && (
             <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-rose-50 dark:bg-rose-950/90 border border-rose-200 dark:border-rose-800 shadow-2xl p-3 z-50 text-xs text-rose-700 dark:text-rose-200 font-semibold">
@@ -210,7 +277,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   {searchResults.kyc.map((k) => (
                     <button
                       key={k.requestId}
-                      onClick={() => { setSearchQuery(''); setSearchResults(null); navigate('/kyc'); }}
+                      onClick={() => {
+                        const targetId = k.requestId || k.applicantId;
+                        setSearchQuery('');
+                        setSearchResults(null);
+                        navigate(`/kyc/all?search=${encodeURIComponent(targetId)}&openId=${encodeURIComponent(targetId)}`);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex justify-between"
                     >
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{k.applicantName}</span>
@@ -220,7 +292,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   {searchResults.payments.map((p) => (
                     <button
                       key={p.transactionId}
-                      onClick={() => { setSearchQuery(''); setSearchResults(null); navigate('/payment'); }}
+                      onClick={() => {
+                        const targetId = p.transactionId;
+                        setSearchQuery('');
+                        setSearchResults(null);
+                        navigate(`/payment/all?search=${encodeURIComponent(targetId)}&openId=${encodeURIComponent(targetId)}`);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex justify-between"
                     >
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{p.transactionType}</span>
@@ -230,7 +307,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   {searchResults.queries.map((q) => (
                     <button
                       key={q.queryId}
-                      onClick={() => { setSearchQuery(''); setSearchResults(null); navigate('/queries'); }}
+                      onClick={() => {
+                        const targetId = q.queryId;
+                        setSearchQuery('');
+                        setSearchResults(null);
+                        navigate(`/queries/all?search=${encodeURIComponent(targetId)}&openId=${encodeURIComponent(targetId)}`);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex justify-between"
                     >
                       <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{q.subject}</span>
@@ -240,7 +322,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   {searchResults.employees.map((e) => (
                     <button
                       key={e.employeeId}
-                      onClick={() => { setSearchQuery(''); setSearchResults(null); navigate('/staff'); }}
+                      onClick={() => {
+                        const targetId = e.employeeId;
+                        setSearchQuery('');
+                        setSearchResults(null);
+                        navigate(`/staff/all?search=${encodeURIComponent(targetId)}&openId=${encodeURIComponent(targetId)}`);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex justify-between"
                     >
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{e.name}</span>
@@ -250,7 +337,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   {searchResults.tasks.map((t) => (
                     <button
                       key={t.taskId}
-                      onClick={() => { setSearchQuery(''); setSearchResults(null); navigate('/tasks'); }}
+                      onClick={() => {
+                        const targetId = t.taskId;
+                        setSearchQuery('');
+                        setSearchResults(null);
+                        navigate(`/tasks?search=${encodeURIComponent(targetId)}&openId=${encodeURIComponent(targetId)}`);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex justify-between"
                     >
                       <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{t.title}</span>
@@ -267,7 +359,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       {/* Right Actions */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Notifications */}
-        <div className="relative">
+        <div ref={notifRef} className="relative">
           <button
             onClick={() => setShowNotifMenu(!showNotifMenu)}
             className="relative p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -349,15 +441,25 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
         </button>
 
-        {/* User Profile & Logout */}
-        <div className="flex items-center pl-2 border-l border-slate-200 dark:border-slate-800">
+        {/* User Profile Pill with Role */}
+        <div className="flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-800">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-slate-950 font-black text-xs flex items-center justify-center shadow-sm shrink-0">
+            {user?.name?.charAt(0) || 'U'}
+          </div>
+          <div className="hidden md:block text-left leading-tight">
+            <div className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[130px]">
+              {user?.name || 'Staff Member'}
+            </div>
+            <div className="text-[10px] font-bold text-[#1D4ED8] dark:text-amber-400">
+              {user?.role === 'overall_lead' ? 'Total Lead ▼' : user?.role === 'kyc_lead' ? 'KYC Lead ▼' : user?.role === 'payment_lead' ? 'Payment Lead ▼' : user?.role === 'queries_lead' ? 'Queries Lead ▼' : user?.role === 'kyc_employee' ? 'KYC Executive ▼' : user?.role === 'payment_employee' ? 'Payment Executive ▼' : user?.role === 'queries_employee' ? 'Queries Executive ▼' : 'Staff ▼'}
+            </div>
+          </div>
           <button
             onClick={logout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition-colors"
-            title="Log out from Backoffice"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+            title="Log out"
           >
             <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </div>

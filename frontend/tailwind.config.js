@@ -20,6 +20,18 @@ export default {
           800: '#3730a3',
           900: '#312e81',
           950: '#1e1b4b',
+        },
+        forge: {
+          navy: '#0B1727',
+          deep: '#0F1E36',
+          royal: '#1D4ED8',
+          blue: '#2563EB',
+          sky: '#38BDF8',
+          yellow: '#F59E0B',
+          gold: '#EAB308',
+          lightYellow: '#FEF3C7',
+          canvas: '#F8FAFC',
+          card: '#FFFFFF'
         }
       }
     },

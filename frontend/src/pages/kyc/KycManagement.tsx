@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ShieldCheck,
   UserCheck,
@@ -28,6 +28,11 @@ import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { DepartmentTabHeader, PaginationBar, TabSummaryCounts } from '../../components/common/DepartmentTabHeader';
 import { KYC_NAV_CATEGORIES } from '../../config/categoryCatalog';
 import { KycVerificationWorkbench } from '../../components/kyc/KycVerificationWorkbench';
+import { StatCard } from '../../components/common/StatCard';
+import { DonutChartCard } from '../../components/common/DonutChartCard';
+import { RadialGaugeCard } from '../../components/common/RadialGaugeCard';
+import { QuickActionsCard } from '../../components/common/QuickActionsCard';
+import { TeamPerformanceCard } from '../../components/common/TeamPerformanceCard';
 
 function formatPendingDuration(submissionDate: string, status: string): string {
   if (status === 'Approved' || status === 'Rejected') return 'Completed';
@@ -39,6 +44,7 @@ function formatPendingDuration(submissionDate: string, status: string): string {
 export const KycManagement: React.FC = () => {
   const { user } = useAuth();
   const { categorySlug } = useParams<{ categorySlug?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const activeCategory =
@@ -64,6 +70,7 @@ export const KycManagement: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
 
   const [selectedReq, setSelectedReq] = useState<KycRequest | null>(null);
+  const [viewedEscalations, setViewedEscalations] = useState<Set<string>>(new Set());
   const [showAssignModal, setShowAssignModal] = useState<KycRequest | null>(null);
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assignReason, setAssignReason] = useState('');
@@ -152,10 +159,25 @@ export const KycManagement: React.FC = () => {
     if (!selectedTransferredQuery) return;
     try {
       setSubmittingTransferredAction(true);
+      let backendAction: 'UPDATE_STATUS' | 'REQUEST_REKYC' | 'TRANSFER_BACK' | 'RESOLVE' = 'UPDATE_STATUS';
+      let statusParam: string | undefined = undefined;
+
+      if (transferredAction === 'IN_PROGRESS') {
+        backendAction = 'UPDATE_STATUS';
+        statusParam = 'In Progress';
+      } else if (transferredAction === 'RE_KYC_REQUESTED') {
+        backendAction = 'REQUEST_REKYC';
+      } else if (transferredAction === 'RESOLVED') {
+        backendAction = 'RESOLVE';
+      } else if (transferredAction === 'TRANSFER_BACK_TO_QUERIES') {
+        backendAction = 'TRANSFER_BACK';
+      }
+
       const res = await apiFetch(`/kyc/transferred-queries/${selectedTransferredQuery.queryId}/action`, {
         method: 'POST',
         body: JSON.stringify({
-          action: transferredAction,
+          action: backendAction,
+          status: statusParam,
           notes: transferredNotes
         })
       });
@@ -169,6 +191,21 @@ export const KycManagement: React.FC = () => {
       setSubmittingTransferredAction(false);
     }
   };
+
+  useEffect(() => {
+    const openId = searchParams.get('openId');
+    const searchParam = searchParams.get('search');
+    if (searchParam && search !== searchParam) {
+      setSearch(searchParam);
+    }
+    if (openId && requests.length > 0) {
+      const match = requests.find(r => r.requestId === openId || r.applicantId === openId || (r as any)._id === openId);
+      if (match) {
+        setSelectedReq(match);
+        setViewedEscalations(prev => new Set(prev).add(match.requestId).add(match._id));
+      }
+    }
+  }, [searchParams, requests]);
 
   useEffect(() => {
     setPage(1);
@@ -286,6 +323,86 @@ export const KycManagement: React.FC = () => {
   };
 
   const isLead = user?.role === 'overall_lead' || user?.role === 'kyc_lead';
+  const isEmployee = user?.role === 'kyc_employee';
+  const [viewMode, setViewMode] = useState<'lead' | 'employee'>(
+    isEmployee ? 'employee' : 'lead'
+  );
+  const [employeeStatusTab, setEmployeeStatusTab] = useState<'ALL' | 'IN_PROGRESS' | 'REUPLOAD' | 'COMPLETED'>('ALL');
+
+  const totalKycCount = total || (summary as any).totalCount || requests.length;
+  const pendingKycCount = (summary as any).pendingCount ?? (stats.unassigned || 0);
+  const inProgressKycCount = (summary as any).inProgressCount ?? (stats.inProgress || 0);
+  const approvedKycCount = (summary as any).completedCount ?? (stats.approved || 0);
+  const reuploadKycCount = stats.reuploadRequired || 0;
+
+  const donutData = [
+    { name: 'Approved', value: approvedKycCount, color: '#10B981' },
+    { name: 'In Progress', value: inProgressKycCount, color: '#0EA5E9' },
+    { name: 'Pending', value: pendingKycCount, color: '#F59E0B' },
+    { name: 'Re-upload', value: reuploadKycCount, color: '#EF4444' }
+  ];
+
+  const teamMembers = (stats.employeeWorkload && stats.employeeWorkload.length > 0)
+    ? stats.employeeWorkload.map((w: any) => ({
+        name: w.employeeName || w.employeeId,
+        todayCount: (w.activeCount || 0) + (w.completedCount || 0),
+        approvedCount: w.completedCount || 0,
+        role: 'KYC Officer'
+      }))
+    : kycStaff.map((s) => ({
+        name: s.name,
+        todayCount: 0,
+        approvedCount: 0,
+        role: s.designation || 'KYC Officer'
+      }));
+
+  const myRequests = requests.filter(r =>
+    !r.assignedEmployeeId || r.assignedEmployeeId === user?.employeeId || isEmployee
+  );
+  const myAssignedCount = myRequests.length;
+  const myInProgressCount = myRequests.filter(r => r.status === 'In Progress' || r.status === 'Assigned').length;
+  const myPendingActionCount = myRequests.filter(r => ['Unassigned', 'Re-upload Requested'].includes(r.status)).length;
+  const myCompletedCount = myRequests.filter(r => ['Approved', 'Rejected'].includes(r.status)).length;
+  const employeeCompletionRate = myAssignedCount > 0 ? Math.round((myCompletedCount / myAssignedCount) * 100) : 100;
+
+  const filteredMyRequests = myRequests.filter(r => {
+    if (employeeStatusTab === 'IN_PROGRESS') return r.status === 'In Progress' || r.status === 'Assigned';
+    if (employeeStatusTab === 'REUPLOAD') return r.status === 'Re-upload Requested' || r.status === 'Unassigned';
+    if (employeeStatusTab === 'COMPLETED') return ['Approved', 'Rejected'].includes(r.status);
+    return true;
+  });
+
+  const kycLeadActions = [
+    {
+      label: 'Assign KYC to Officer',
+      icon: UserCheck,
+      variant: 'primary' as const,
+      onClick: () => {
+        const firstUnassigned = requests.find(r => r.status === 'Unassigned');
+        if (firstUnassigned) {
+          setShowAssignModal(firstUnassigned);
+          setAssignEmployeeId(kycStaff[0]?.employeeId || '');
+        } else if (requests.length > 0) {
+          setShowAssignModal(requests[0]);
+          setAssignEmployeeId(requests[0].assignedEmployeeId || kycStaff[0]?.employeeId || '');
+        } else {
+          alert('No KYC requests currently available to assign.');
+        }
+      }
+    },
+    {
+      label: 'Escalate to Total Lead',
+      icon: ArrowRightCircle,
+      variant: 'secondary' as const,
+      onClick: () => navigate('/overall')
+    },
+    {
+      label: 'KYC Audit & Reports',
+      icon: FileText,
+      variant: 'outline' as const,
+      onClick: () => navigate('/reports')
+    }
+  ];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -323,99 +440,46 @@ export const KycManagement: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {/* Horizontal Role-Wise KYC Category Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
-        {KYC_NAV_CATEGORIES.map(cat => {
-          const isActive = activeCategory.key === cat.key;
-          const cnt = categoryCounts[cat.key];
-          return (
+      {/* Dashboard Header & View Mode Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {viewMode === 'employee' ? 'My KYC Dashboard' : 'KYC Operations Dashboard'}
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            {viewMode === 'employee'
+              ? 'Personal verification queue & daily throughput metrics'
+              : 'Enterprise onboarding identity verification & officer workload monitor'}
+          </p>
+        </div>
+
+        {isLead && (
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <button
-              key={cat.key}
               type="button"
-              onClick={() => navigate(`/kyc/${cat.slug}`)}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+              onClick={() => setViewMode('lead')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'lead'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              <span>{cat.label}</span>
-              {typeof cnt === 'number' && (
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  {cnt}
-                </span>
-              )}
+              Operations View
             </button>
-          );
-        })}
-      </div>
-
-      {/* Common Category Header, Scoped KPIs & Unified Filter Bar */}
-      <DepartmentTabHeader
-        title={activeCategory.label}
-        description={`${activeCategory.description} — Avg TAT: ${stats.avgVerificationHours || 0}h | SLA Overdue (>24h): ${stats.overdueCount || 0}`}
-        departmentBadge="KYC Operations"
-        summary={summary}
-        pendingLabel="Unassigned / Re-upload"
-        inProgressLabel="Assigned / In Progress"
-        completedLabel="Approved"
-        actions={
-          isLead ? (
             <button
-              onClick={handleSyncEcosystem}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-xs font-bold hover:opacity-90 shadow-sm shrink-0"
+              type="button"
+              onClick={() => setViewMode('employee')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'employee'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
             >
-              <Database className="w-4 h-4" />
-              <span>Sync Connect App Pending KYC</span>
+              My Queue
             </button>
-          ) : undefined
-        }
-        search={search}
-        onSearchChange={setSearch}
-        searchPlaceholder={`Search ${activeCategory.label} by ID, name, phone...`}
-        statusFilter={statusFilter}
-        onStatusChange={setStatusFilter}
-        statusOptions={[
-          { value: 'All', label: 'All Statuses' },
-          { value: 'Escalated', label: 'Escalated to Lead' },
-          { value: 'Unassigned', label: 'Unassigned' },
-          { value: 'Assigned', label: 'Assigned' },
-          { value: 'In Progress', label: 'In Progress' },
-          { value: 'Re-upload Requested', label: 'Re-upload Requested' },
-          { value: 'Approved', label: 'Approved' },
-          { value: 'Rejected', label: 'Rejected' }
-        ]}
-        priorityFilter={priorityFilter}
-        onPriorityChange={setPriorityFilter}
-        assigneeFilter={assigneeFilter}
-        onAssigneeChange={setAssigneeFilter}
-        employeeOptions={kycStaff.map(s => ({ employeeId: s.employeeId, name: s.name }))}
-        startDate={startDate}
-        endDate={endDate}
-        onStartDateChange={setStartDate}
-        onEndDateChange={setEndDate}
-        extraFilters={
-          <select
-            value={pendingDurationFilter}
-            onChange={e => setPendingDurationFilter(e.target.value)}
-            aria-label="Pending Duration Filter"
-            className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300"
-          >
-            <option value="All">Any Pending Duration</option>
-            <option value="24">Pending &gt; 24h (Overdue)</option>
-            <option value="48">Pending &gt; 48h (Critical)</option>
-          </select>
-        }
-        onApplyFilters={() => {
-          setPage(1);
-          loadData(1);
-        }}
-        onResetFilters={resetFilters}
-      />
+          </div>
+        )}
+      </div>
 
       <ErrorBanner message={loadError} onRetry={() => loadData(page)} />
 
@@ -431,31 +495,350 @@ export const KycManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Team Lead Employee Workload Matrix */}
-      {isLead && stats.employeeWorkload?.length > 0 && (
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-            KYC Employee Workload Distribution ({activeCategory.label})
+      {/* ========================================================================= */}
+      {/* 1. EMPLOYEE VIEW (DASHBOARD 5: "My KYC Dashboard")                       */}
+      {/* ========================================================================= */}
+      {viewMode === 'employee' ? (
+        <div className="space-y-5">
+          {/* Top 4 KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <StatCard
+              title="Assigned"
+              value={myAssignedCount}
+              icon={FileText}
+              color="royal"
+              subtitle="Total assigned to you"
+            />
+            <StatCard
+              title="In Progress"
+              value={myInProgressCount}
+              icon={RefreshCw}
+              color="sky"
+              subtitle="Under active verification"
+            />
+            <StatCard
+              title="Pending Action"
+              value={myPendingActionCount}
+              icon={Clock}
+              color="yellow"
+              subtitle="Awaiting user re-upload"
+            />
+            <StatCard
+              title="Completed Today"
+              value={myCompletedCount}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="Approved & rejected records"
+            />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            {stats.employeeWorkload.map((w: any) => (
-              <div key={w.employeeId} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-white">{w.employeeName}</div>
-                  <div className="text-[11px] font-mono text-slate-400">{w.employeeId}</div>
+
+          {/* 2-Column Section: Left (8 cols) = Table, Right (4 cols) = Radial Gauge */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left Column: My Assigned Requests */}
+            <div className="lg:col-span-8 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">My Assigned Requests</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Verification queue assigned to your account</p>
+                  </div>
+                  {/* Status filter tabs */}
+                  <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                    {(['ALL', 'IN_PROGRESS', 'REUPLOAD', 'COMPLETED'] as const).map(tabKey => (
+                      <button
+                        key={tabKey}
+                        onClick={() => setEmployeeStatusTab(tabKey)}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          employeeStatusTab === tabKey
+                            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {tabKey === 'ALL'
+                          ? 'All'
+                          : tabKey === 'IN_PROGRESS'
+                          ? 'In Progress'
+                          : tabKey === 'REUPLOAD'
+                          ? 'Needs Action'
+                          : 'Completed'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-bold text-indigo-600">{w.activeCount} Active</div>
-                  <div className="text-[11px] text-emerald-600">{w.completedCount} Completed</div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <th className="py-3 px-3">Request ID</th>
+                        <th className="py-3 px-3">Applicant / Entity</th>
+                        <th className="py-3 px-3">Category</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3">Pending</th>
+                        <th className="py-3 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {filteredMyRequests.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-400">
+                            No requests match your current tab filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredMyRequests.slice(0, 10).map(req => {
+                          const pendingText = formatPendingDuration(req.submissionDate, req.status);
+                          return (
+                            <tr key={req._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                              <td className="py-3 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {req.requestId}
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{req.applicantName}</div>
+                                <div className="text-[10px] text-slate-400">{req.phone || req.applicantId}</div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                  {req.applicantType}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3">{getStatusBadge(req.status)}</td>
+                              <td className="py-3 px-3 font-semibold text-slate-600 dark:text-slate-300">{pendingText}</td>
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedReq(req);
+                                    setActiveDocIndex(0);
+                                    setZoomLevel(1);
+                                    setActionMode('NONE');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white font-bold text-xs shadow-sm transition-all"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Verify</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Right Column: Radial Gauge + Quick Action */}
+            <div className="lg:col-span-4 space-y-4">
+              <RadialGaugeCard
+                title="My Progress (Today)"
+                percentage={employeeCompletionRate}
+                centerSubtitle="Completed"
+                color="#10B981"
+                subItems={[
+                  { label: 'Total Assigned', value: myAssignedCount, color: '#1D4ED8' },
+                  { label: 'Completed Today', value: myCompletedCount, color: '#10B981' },
+                  { label: 'In Progress', value: myInProgressCount, color: '#0EA5E9' }
+                ]}
+              />
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm space-y-3">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Quick Actions
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextUnverified = myRequests.find(r => r.status === 'In Progress' || r.status === 'Assigned' || r.status === 'Unassigned');
+                    if (nextUnverified) {
+                      setSelectedReq(nextUnverified);
+                      setActiveDocIndex(0);
+                      setZoomLevel(1);
+                      setActionMode('NONE');
+                    } else if (myRequests.length > 0) {
+                      setSelectedReq(myRequests[0]);
+                    } else {
+                      alert('No pending requests to verify.');
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Start Next Verification</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      ) : (
+        /* ========================================================================= */
+        /* 2. LEAD VIEW (DASHBOARD 2: "KYC Operations Dashboard")                   */
+        /* ========================================================================= */
+        <div className="space-y-5">
+          {/* Top 5 KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <StatCard
+              title="Total KYC"
+              value={totalKycCount}
+              icon={FileText}
+              color="royal"
+              subtitle="All registered requests"
+            />
+            <StatCard
+              title="Pending"
+              value={pendingKycCount}
+              icon={Clock}
+              color="yellow"
+              subtitle="Unassigned / awaiting action"
+            />
+            <StatCard
+              title="In Progress"
+              value={inProgressKycCount}
+              icon={RefreshCw}
+              color="sky"
+              subtitle="Under review by officer"
+            />
+            <StatCard
+              title="Approved"
+              value={approvedKycCount}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="Verification successful"
+            />
+            <StatCard
+              title="Re-upload"
+              value={reuploadKycCount}
+              icon={AlertTriangle}
+              color="rose"
+              subtitle="Action required from user"
+            />
+          </div>
 
-      {/* Dedicated Transferred KYC Queries Table */}
-      {activeCategory.key === 'KYC_QUERIES' ? (
+          {/* 3-Column Middle Section: Donut + Team Performance + Quick Actions */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Column 1 (4 cols): KYC Status Overview Donut */}
+            <DonutChartCard
+              className="lg:col-span-4"
+              title="KYC Status Overview"
+              subtitle="Live verification distribution"
+              centerCount={totalKycCount}
+              centerLabel="Total"
+              data={donutData}
+            />
+
+            {/* Column 2 (5 cols): Team Performance */}
+            <TeamPerformanceCard
+              className="lg:col-span-5"
+              title="Team Performance"
+              subtitle="Verification throughput by officer"
+              members={teamMembers}
+            />
+
+            {/* Column 3 (3 cols): Quick Actions */}
+            <QuickActionsCard
+              className="lg:col-span-3"
+              title="Quick Actions"
+              actions={kycLeadActions}
+            />
+          </div>
+
+          {/* Horizontal Role-Wise KYC Category Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
+            {KYC_NAV_CATEGORIES.map(cat => {
+              const isActive = activeCategory.key === cat.key;
+              const cnt = categoryCounts[cat.key];
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => navigate(`/kyc/${cat.slug}`)}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#1D4ED8] text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{cat.label}</span>
+                  {typeof cnt === 'number' && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {cnt}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Scoped KPIs & Unified Filter Bar */}
+          <DepartmentTabHeader
+            title={activeCategory.label}
+            description={`${activeCategory.description} — Avg TAT: ${stats.avgVerificationHours || 0}h | SLA Overdue (>24h): ${stats.overdueCount || 0}`}
+            departmentBadge="KYC Operations"
+            summary={summary}
+            pendingLabel="Unassigned / Re-upload"
+            inProgressLabel="Assigned / In Progress"
+            completedLabel="Approved"
+            actions={
+              isLead ? (
+                <button
+                  onClick={handleSyncEcosystem}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-blue-600 text-white text-xs font-bold hover:opacity-90 shadow-sm shrink-0"
+                >
+                  <Database className="w-4 h-4" />
+                  <span>Sync Connect App Pending KYC</span>
+                </button>
+              ) : undefined
+            }
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={`Search ${activeCategory.label} by ID, name, phone...`}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+            statusOptions={[
+              { value: 'All', label: 'All Statuses' },
+              { value: 'Escalated', label: 'Escalated to Lead' },
+              { value: 'Unassigned', label: 'Unassigned' },
+              { value: 'Assigned', label: 'Assigned' },
+              { value: 'In Progress', label: 'In Progress' },
+              { value: 'Re-upload Requested', label: 'Re-upload Requested' },
+              { value: 'Approved', label: 'Approved' },
+              { value: 'Rejected', label: 'Rejected' }
+            ]}
+            priorityFilter={priorityFilter}
+            onPriorityChange={setPriorityFilter}
+            assigneeFilter={assigneeFilter}
+            onAssigneeChange={setAssigneeFilter}
+            employeeOptions={kycStaff.map(s => ({ employeeId: s.employeeId, name: s.name }))}
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            extraFilters={
+              <select
+                value={pendingDurationFilter}
+                onChange={e => setPendingDurationFilter(e.target.value)}
+                aria-label="Pending Duration Filter"
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300"
+              >
+                <option value="All">Any Pending Duration</option>
+                <option value="24">Pending &gt; 24h (Overdue)</option>
+                <option value="48">Pending &gt; 48h (Critical)</option>
+              </select>
+            }
+            onApplyFilters={() => {
+              setPage(1);
+              loadData(1);
+            }}
+            onResetFilters={resetFilters}
+          />
+
+          {/* Transferred KYC Queries or Regular KYC Table */}
+          {activeCategory.key === 'KYC_QUERIES' ? (
         loading ? (
           <div className="flex justify-center p-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
@@ -605,7 +988,7 @@ export const KycManagement: React.FC = () => {
                           ? 'Skill Category & Zone'
                           : ['KYC_EMPLOYEE', 'PAYMENT_EMPLOYEE', 'QUERIES_EMPLOYEE'].includes(activeCategory.key)
                           ? 'Department & Designation'
-                          : activeCategory.key === 'MANAGER' || activeCategory.key === 'SUB_ADMIN'
+                          : activeCategory.key === 'MANAGER'
                           ? 'Territory / Jurisdiction'
                           : 'Applicant Category'}
                       </th>
@@ -627,14 +1010,17 @@ export const KycManagement: React.FC = () => {
                   const isEscalatedReq = req.isEscalated ||
                     req.verificationRemarks?.startsWith('ESCALATED') ||
                     req.approvalHistory?.some((h: any) => h.action === 'ESCALATED' && !['Approved', 'Rejected'].includes(req.status));
+                  const isUnviewedEscalation = isEscalatedReq && !viewedEscalations.has(req.requestId) && !viewedEscalations.has(req._id);
 
                   return (
                     <tr
                       key={req._id}
                       className={`transition-colors ${
-                        isEscalatedReq
+                        isUnviewedEscalation
                           ? 'bg-rose-50/60 dark:bg-rose-950/20 border-l-4 border-l-rose-500'
-                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                          : isEscalatedReq
+                          ? 'border-l-4 border-l-rose-300 dark:border-l-rose-900/60 hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                          : 'border-l-4 border-l-transparent hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
                     >
                       {activeCategory.key === 'VENDOR' ? (
@@ -698,7 +1084,7 @@ export const KycManagement: React.FC = () => {
                                 <div className="font-semibold text-slate-800 dark:text-slate-200">{details.designation || req.applicantType}</div>
                                 <div className="text-[11px] text-slate-400">{details.department || details.workLocation || req.email}</div>
                               </>
-                            ) : activeCategory.key === 'MANAGER' || activeCategory.key === 'SUB_ADMIN' ? (
+                            ) : activeCategory.key === 'MANAGER' ? (
                               <>
                                 <div className="font-semibold text-slate-800 dark:text-slate-200">{details.jurisdiction || details.region || details.adminScope || req.applicantType}</div>
                                 <div className="text-[11px] text-slate-400">{req.phone}</div>
@@ -730,12 +1116,12 @@ export const KycManagement: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4 space-y-1">
+                      <td className="py-3.5 px-4 space-y-1 min-w-[155px] whitespace-nowrap align-middle">
                         <div className="flex flex-col gap-1 items-start">
                           {isEscalatedReq && (
-                            <Badge variant="danger">
-                              <AlertTriangle className="w-3 h-3 mr-1 inline text-rose-500" />
-                              Escalated to Lead
+                            <Badge variant="danger" className="whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+                              <AlertTriangle className="w-3 h-3 mr-1 inline text-rose-500 shrink-0" />
+                              <span>Escalated to Lead</span>
                             </Badge>
                           )}
                           <div>{getStatusBadge(req.status)}</div>
@@ -743,14 +1129,14 @@ export const KycManagement: React.FC = () => {
                         {(activeCategory.key === 'VENDOR' || activeCategory.key === 'AGENT' || activeCategory.key === 'ALL') && (
                           <div>
                             {req.routedToPayment ? (
-                              <Badge variant="success">
-                                <ArrowRightCircle className="w-3 h-3" />
+                              <Badge variant="success" className="whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+                                <ArrowRightCircle className="w-3 h-3 shrink-0" />
                                 <span>Routed: {req.paymentTaskId}</span>
                               </Badge>
                             ) : ['Vendor', 'Agent'].includes(req.applicantType) ? (
-                              <span className="text-[10px] text-amber-600 font-semibold">Payment Post-Approval</span>
+                              <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">Payment Post-Approval</span>
                             ) : (
-                              <span className="text-[10px] text-slate-400">Direct Approval</span>
+                              <span className="text-[10px] text-slate-400 whitespace-nowrap">Direct Approval</span>
                             )}
                           </div>
                         )}
@@ -830,6 +1216,7 @@ export const KycManagement: React.FC = () => {
                         <button
                           onClick={() => {
                             setSelectedReq(req);
+                            setViewedEscalations(prev => new Set(prev).add(req.requestId).add(req._id));
                             setActiveDocIndex(0);
                             setZoomLevel(1);
                             setActionMode('NONE');
@@ -859,6 +1246,8 @@ export const KycManagement: React.FC = () => {
           />
         </div>
       )}
+    </div>
+  )}
 
       {/* Manual Assignment / Reassignment Modal */}
       <Modal

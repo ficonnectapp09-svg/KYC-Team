@@ -365,10 +365,20 @@ export class StaffController {
         return res.status(400).json({ success: false, message: 'Invalid status value.' });
       }
 
+      const currentUser = req.user!;
       const employee = await Employee.findOne(buildIdFilter('employeeId', id));
 
       if (!employee) {
         return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+
+      // Prevent self-modification of account status / suspension
+      const isSelf = currentUser.employeeId === employee.employeeId || currentUser.id === employee._id.toString();
+      if (isSelf) {
+        return res.status(403).json({
+          success: false,
+          message: 'Self-modification of account status or account suspension is not permitted.'
+        });
       }
 
       const oldStatus = employee.status;
@@ -396,11 +406,26 @@ export class StaffController {
   static async updateEmployee(req: Request, res: Response): Promise<any> {
     try {
       const { id } = req.params;
+      const currentUser = req.user!;
       const updates = req.body;
 
       // Do not allow direct password or employeeId changes via this endpoint
       delete updates.password;
       delete updates.employeeId;
+
+      const targetEmp = await Employee.findOne(buildIdFilter('employeeId', id));
+      if (!targetEmp) {
+        return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+
+      // Prevent self-modification of status, role or department
+      const isSelf = currentUser.employeeId === targetEmp.employeeId || currentUser.id === targetEmp._id.toString();
+      if (isSelf && (updates.status || updates.role || updates.department)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Self-modification of status, role, or department is not permitted.'
+        });
+      }
 
       const employee = await Employee.findOneAndUpdate(
         buildIdFilter('employeeId', id),

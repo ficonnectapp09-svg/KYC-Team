@@ -34,6 +34,9 @@ interface DepartmentTabHeaderProps {
   completedLabel?: string;
   pendingLabel?: string;
   inProgressLabel?: string;
+  pendingStatusValue?: string;
+  inProgressStatusValue?: string;
+  completedStatusValue?: string;
   actions?: React.ReactNode;
   // Common filters
   search: string;
@@ -66,6 +69,9 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
   completedLabel = 'Approved / Completed',
   pendingLabel = 'Pending',
   inProgressLabel = 'In Progress',
+  pendingStatusValue,
+  inProgressStatusValue,
+  completedStatusValue,
   actions,
   search,
   onSearchChange,
@@ -118,8 +124,17 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           value={summary.pendingCount ?? 0}
           icon={Clock}
           variant="amber"
-          onClick={onStatusChange ? () => onStatusChange('Unassigned') : undefined}
-          isActive={onStatusChange ? statusFilter === 'Unassigned' || statusFilter === 'Pending' || statusFilter === 'Re-upload Requested' : false}
+          onClick={onStatusChange ? () => onStatusChange(pendingStatusValue || 'Unassigned') : undefined}
+          isActive={
+            onStatusChange
+              ? statusFilter === (pendingStatusValue || 'Unassigned') ||
+                statusFilter === 'Pending' ||
+                statusFilter === 'PENDING' ||
+                statusFilter === 'HELD' ||
+                statusFilter === 'Pending Checker Review' ||
+                statusFilter === 'Re-upload Requested'
+              : false
+          }
         />
         {showInProgress && (
           <StatCard
@@ -127,8 +142,16 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
             value={summary.inProgressCount ?? 0}
             icon={RefreshCw}
             variant="purple"
-            onClick={onStatusChange ? () => onStatusChange('In Progress') : undefined}
-            isActive={onStatusChange ? statusFilter === 'In Progress' || statusFilter === 'Assigned' : false}
+            onClick={onStatusChange ? () => onStatusChange(inProgressStatusValue || 'In Progress') : undefined}
+            isActive={
+              onStatusChange
+                ? statusFilter === (inProgressStatusValue || 'In Progress') ||
+                  statusFilter === 'PROCESSING' ||
+                  statusFilter === 'Processing' ||
+                  statusFilter === 'Assigned' ||
+                  statusFilter === 'ADJUSTED'
+                : false
+            }
           />
         )}
         <StatCard
@@ -136,8 +159,16 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           value={summary.completedCount ?? 0}
           icon={CheckCircle2}
           variant="emerald"
-          onClick={onStatusChange ? () => onStatusChange('Approved') : undefined}
-          isActive={onStatusChange ? statusFilter === 'Approved' || statusFilter === 'Completed' : false}
+          onClick={onStatusChange ? () => onStatusChange(completedStatusValue || 'Approved') : undefined}
+          isActive={
+            onStatusChange
+              ? statusFilter === (completedStatusValue || 'Approved') ||
+                statusFilter === 'Completed' ||
+                statusFilter === 'COMPLETED' ||
+                statusFilter === 'Settled' ||
+                statusFilter === 'REFUNDED'
+              : false
+          }
         />
       </div>
 

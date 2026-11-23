@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Users,
   UserPlus,
@@ -28,6 +28,7 @@ import { STAFF_DIRECTORY_CATEGORIES } from '../../config/categoryCatalog';
 export const StaffManagement: React.FC = () => {
   const { user } = useAuth();
   const { categorySlug } = useParams<{ categorySlug?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'directory' | 'attendance'>('directory');
@@ -46,6 +47,22 @@ export const StaffManagement: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState<TabSummaryCounts>({});
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const openId = searchParams.get('openId');
+    const searchParam = searchParams.get('search');
+    if (searchParam && search !== searchParam) {
+      setSearch(searchParam);
+    }
+    if (openId && employees.length > 0) {
+      const match = employees.find(
+        (e) => e.employeeId === openId || (e as any)._id === openId || e.email === openId
+      );
+      if (match) {
+        openProfileOverview(match);
+      }
+    }
+  }, [searchParams, employees]);
 
   const visibleStaffCategories = React.useMemo(() => {
     if (!user) return STAFF_DIRECTORY_CATEGORIES;
@@ -626,7 +643,9 @@ export const StaffManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {employees.map(emp => (
+                {employees.map(emp => {
+                  const isSelf = emp.employeeId === user?.employeeId || emp.email === user?.email || (emp as any)._id === (user as any).id;
+                  return (
                   <tr
                     key={emp._id}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
@@ -688,7 +707,7 @@ export const StaffManagement: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3.5 px-5 text-right space-x-1.5">
-                      {isLead && (
+                      {isLead && !isSelf && (
                         <button
                           onClick={() => setEditingEmp(emp)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold transition-colors"
@@ -707,7 +726,8 @@ export const StaffManagement: React.FC = () => {
                       </button>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>
@@ -1137,32 +1157,38 @@ export const StaffManagement: React.FC = () => {
                     <span className="font-bold text-slate-700 dark:text-slate-300">
                       Account Controls (Preserves Audit History)
                     </span>
-                    <div className="flex gap-2">
-                      {selectedEmp.status !== 'active' && (
-                        <button
-                          onClick={() => handleStatusChange(selectedEmp.employeeId, 'active')}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                        >
-                          Activate
-                        </button>
-                      )}
-                      {selectedEmp.status === 'active' && (
-                        <button
-                          onClick={() => handleStatusChange(selectedEmp.employeeId, 'inactive')}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold"
-                        >
-                          Mark On Leave / Inactive
-                        </button>
-                      )}
-                      {selectedEmp.status !== 'suspended' && (
-                        <button
-                          onClick={() => handleStatusChange(selectedEmp.employeeId, 'suspended')}
-                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold"
-                        >
-                          Suspend
-                        </button>
-                      )}
-                    </div>
+                    {selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id ? (
+                      <span className="text-xs text-slate-400 italic">
+                        Self-modification of account status or suspension is restricted to safeguard audit integrity.
+                      </span>
+                    ) : (
+                      <div className="flex gap-2">
+                        {selectedEmp.status !== 'active' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'active')}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                          >
+                            Activate
+                          </button>
+                        )}
+                        {selectedEmp.status === 'active' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'inactive')}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold"
+                          >
+                            Mark On Leave / Inactive
+                          </button>
+                        )}
+                        {selectedEmp.status !== 'suspended' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'suspended')}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                          >
+                            Suspend
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

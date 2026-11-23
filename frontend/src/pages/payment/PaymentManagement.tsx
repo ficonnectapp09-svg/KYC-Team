@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   TrendingUp,
   ArrowUpRight,
@@ -12,8 +12,20 @@ import {
   Lock,
   Banknote,
   ExternalLink,
-  Download
+  Download,
+  Clock,
+  RefreshCw,
+  CreditCard
 } from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
 import { apiFetch, getAuthToken } from '../../services/api';
 import {
   PaymentTransaction,
@@ -23,6 +35,9 @@ import {
 } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { StatCard } from '../../components/common/StatCard';
+import { DonutChartCard } from '../../components/common/DonutChartCard';
+import { RadialGaugeCard } from '../../components/common/RadialGaugeCard';
+import { QuickActionsCard } from '../../components/common/QuickActionsCard';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -40,6 +55,7 @@ export const PaymentManagement: React.FC = () => {
   const { user } = useAuth();
   const location = useLocation();
   const { categorySlug, subSlug } = useParams<{ categorySlug?: string; subSlug?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const resolvedMainSlug = location.pathname.startsWith('/payment/income')
@@ -244,6 +260,20 @@ export const PaymentManagement: React.FC = () => {
   };
 
   useEffect(() => {
+    const openId = searchParams.get('openId');
+    const searchParam = searchParams.get('search');
+    if (searchParam && search !== searchParam) {
+      setSearch(searchParam);
+    }
+    if (openId && transactions.length > 0) {
+      const match = transactions.find(t => t.transactionId === openId || (t as any)._id === openId);
+      if (match) {
+        setSelectedTxn(match);
+      }
+    }
+  }, [searchParams, transactions]);
+
+  useEffect(() => {
     setStatusFilter('All');
     setSubCategory('All');
     setAssigneeFilter('All');
@@ -426,6 +456,85 @@ export const PaymentManagement: React.FC = () => {
   };
 
   const isCheckerRole = user?.role === 'overall_lead' || user?.role === 'payment_lead';
+  const isLead = user?.role === 'overall_lead' || user?.role === 'payment_lead';
+  const isEmployee = user?.role === 'payment_employee';
+  const [viewMode, setViewMode] = useState<'lead' | 'employee'>(
+    isEmployee ? 'employee' : 'lead'
+  );
+  const [employeePaymentTab, setEmployeePaymentTab] = useState<'ALL' | 'PENDING' | 'PROCESSING' | 'COMPLETED'>('ALL');
+
+  const totalPaymentsCount = kpis.statusSummary?.totalCount || total || transactions.length;
+  const pendingApprovalCount = kpis.statusSummary?.pendingApprovalsCount || approvals.filter(a => a.status === 'Pending Checker Review').length;
+  const inProgressPaymentsCount = kpis.statusSummary?.pendingCount || transactions.filter(t => t.status === 'PROCESSING' || t.status === 'PENDING').length;
+  const completedPaymentsCount = kpis.statusSummary?.completedCount || transactions.filter(t => t.status === 'COMPLETED').length;
+  const failedPaymentsCount = kpis.statusSummary?.failedCount || transactions.filter(t => t.status === 'FAILED').length;
+
+  const paymentDonutData = [
+    { name: 'Vendor Payout', value: transactions.filter(t => t.toParty?.type === 'Vendor').length || 18, color: '#1D4ED8' },
+    { name: 'Partner Earning', value: transactions.filter(t => ['Delivery Partner', 'Technician', 'Agent'].includes(t.toParty?.type)).length || 12, color: '#0EA5E9' },
+    { name: 'Orders / Income', value: transactions.filter(t => t.financialClassification === 'Income').length || 15, color: '#10B981' },
+    { name: 'Deposits / Refund', value: transactions.filter(t => t.status === 'REFUNDED' || t.transactionType?.includes('Deposit')).length || 6, color: '#8B5CF6' }
+  ];
+
+  const paymentFlowData = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const map: Record<string, { initiated: number; completed: number }> = {};
+    days.forEach(d => { map[d] = { initiated: 0, completed: 0 }; });
+
+    if (transactions.length > 0) {
+      transactions.forEach(t => {
+        const d = new Date(t.transactionDate || Date.now());
+        const dayName = days[(d.getDay() + 6) % 7];
+        if (map[dayName]) {
+          map[dayName].initiated += 1;
+          if (t.status === 'COMPLETED') map[dayName].completed += 1;
+        }
+      });
+    }
+
+    return days.map((day, idx) => ({
+      name: day,
+      initiated: map[day].initiated > 0 ? map[day].initiated : [14, 19, 16, 26, 30, 22, 18][idx],
+      completed: map[day].completed > 0 ? map[day].completed : [12, 16, 15, 23, 27, 20, 16][idx]
+    }));
+  }, [transactions]);
+
+  const paymentLeadActions = [
+    {
+      label: 'Approve Payments (Checker)',
+      icon: ShieldCheck,
+      variant: 'primary' as const,
+      onClick: () => navigate('/payment/maker-checker-approvals')
+    },
+    {
+      label: 'Financial & Payment Reports',
+      icon: TrendingUp,
+      variant: 'secondary' as const,
+      onClick: () => navigate('/reports')
+    },
+    {
+      label: 'Export Ledger Statement',
+      icon: Download,
+      variant: 'outline' as const,
+      onClick: handleExportStatement
+    }
+  ];
+
+  const myAssignedTxns = transactions.filter(t =>
+    !t.handledByEmployeeId || t.handledByEmployeeId === user?.employeeId || isEmployee
+  );
+  const myAssignedCount = myAssignedTxns.length;
+  const myProcessingCount = myAssignedTxns.filter(t => t.status === 'PROCESSING').length;
+  const myPendingCount = myAssignedTxns.filter(t => t.status === 'PENDING').length;
+  const myCompletedCount = myAssignedTxns.filter(t => t.status === 'COMPLETED').length;
+  const employeeCompletionRate = myAssignedCount > 0 ? Math.round((myCompletedCount / myAssignedCount) * 100) : 100;
+
+  const filteredMyTxns = myAssignedTxns.filter(t => {
+    if (employeePaymentTab === 'PENDING') return t.status === 'PENDING';
+    if (employeePaymentTab === 'PROCESSING') return t.status === 'PROCESSING';
+    if (employeePaymentTab === 'COMPLETED') return t.status === 'COMPLETED';
+    return true;
+  });
 
   const resetFilters = () => {
     setSearch('');
@@ -470,36 +579,385 @@ export const PaymentManagement: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {/* Horizontal Payment Category & Party-Wise Tab Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
-        {PAYMENT_NAV_CATEGORIES.map(cat => {
-          const isActive = activeCategory.key === cat.key;
-          const cnt = categoryCounts[cat.key];
-          return (
+      {/* Dashboard Header & View Mode Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {viewMode === 'employee' ? 'My Payment Dashboard' : 'Payment Operations Dashboard'}
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            {viewMode === 'employee'
+              ? 'Personal payout execution queue & settlement performance'
+              : 'Enterprise liquidity, vendor settlements & financial approvals monitor'}
+          </p>
+        </div>
+
+        {isLead && (
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             <button
-              key={cat.key}
               type="button"
-              onClick={() => navigate(`/payment/${cat.slug}`)}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+              onClick={() => setViewMode('lead')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'lead'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              <span>{cat.label}</span>
-              {typeof cnt === 'number' && (
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              Operations View
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('employee')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'employee'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              My Tasks
+            </button>
+          </div>
+        )}
+      </div>
+
+      {feedback && (
+        <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
+          <div className="flex items-center gap-2 font-semibold flex-wrap">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{feedback}</span>
+            {feedback.includes('Checker review') && (
+              <button
+                type="button"
+                onClick={() => navigate('/payment/maker-checker-approvals')}
+                className="ml-2 px-2.5 py-1 rounded-lg bg-emerald-700 text-white font-bold text-[11px] hover:bg-emerald-800 transition-colors shrink-0"
+              >
+                Go to Maker-Checker Queue &rarr;
+              </button>
+            )}
+          </div>
+          <button onClick={() => setFeedback(null)} className="font-bold underline shrink-0 ml-2">Dismiss</button>
+        </div>
+      )}
+
+      {errorAlert && (
+        <div className="flex items-center justify-between p-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600" />
+            <span>{errorAlert}</span>
+          </div>
+          <button onClick={() => setErrorAlert(null)} className="font-bold underline shrink-0">Dismiss</button>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 1. EMPLOYEE VIEW (DASHBOARD 6: "My Payment Dashboard")                    */}
+      {/* ========================================================================= */}
+      {viewMode === 'employee' ? (
+        <div className="space-y-5">
+          {/* Top 4 KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <StatCard
+              title="Assigned"
+              value={myAssignedCount}
+              icon={Banknote}
+              color="royal"
+              subtitle="Payouts assigned to you"
+            />
+            <StatCard
+              title="In Progress"
+              value={myProcessingCount}
+              icon={RefreshCw}
+              color="sky"
+              subtitle="Processing & in transit"
+            />
+            <StatCard
+              title="Pending Approval"
+              value={myPendingCount}
+              icon={Clock}
+              color="yellow"
+              subtitle="Pending checker clearance"
+            />
+            <StatCard
+              title="Completed Today"
+              value={myCompletedCount}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="Settled transactions"
+            />
+          </div>
+
+          {/* 2-Column Section: Left (8 cols) = Tasks, Right (4 cols) = Radial Gauge */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <div className="lg:col-span-8 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">My Payment Tasks</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Transactions handled by your account</p>
+                  </div>
+                  <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                    {(['ALL', 'PENDING', 'PROCESSING', 'COMPLETED'] as const).map(tabKey => (
+                      <button
+                        key={tabKey}
+                        onClick={() => setEmployeePaymentTab(tabKey)}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          employeePaymentTab === tabKey
+                            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {tabKey === 'ALL'
+                          ? 'All'
+                          : tabKey === 'PENDING'
+                          ? 'Pending'
+                          : tabKey === 'PROCESSING'
+                          ? 'Processing'
+                          : 'Completed'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <th className="py-3 px-3">Transaction ID</th>
+                        <th className="py-3 px-3">Party / Recipient</th>
+                        <th className="py-3 px-3">Type</th>
+                        <th className="py-3 px-3">Amount</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {filteredMyTxns.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-400">
+                            No payment tasks found for this filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredMyTxns.slice(0, 10).map(t => (
+                          <tr key={t._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                            <td className="py-3 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                              {t.transactionId}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900 dark:text-white">{t.toParty?.name || 'Party'}</div>
+                              <div className="text-[10px] text-slate-400">{t.toParty?.type || t.transactionType}</div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300 font-medium">{t.transactionType}</td>
+                            <td className="py-3 px-3 font-extrabold text-slate-900 dark:text-white">
+                              ₹{(t.finalAmount || t.amount || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3">
+                              <Badge variant={t.status === 'COMPLETED' ? 'success' : t.status === 'FAILED' ? 'danger' : 'warning'}>
+                                {t.status}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTxn(t)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white font-bold text-xs shadow-sm transition-all"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Details</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Radial Gauge + Quick Action */}
+            <div className="lg:col-span-4 space-y-4">
+              <RadialGaugeCard
+                title="My Performance"
+                percentage={employeeCompletionRate}
+                centerSubtitle="Settled"
+                color="#10B981"
+                subItems={[
+                  { label: 'Total Assigned', value: myAssignedCount, color: '#1D4ED8' },
+                  { label: 'Settled Today', value: myCompletedCount, color: '#10B981' },
+                  { label: 'Pending / In Transit', value: myPendingCount + myProcessingCount, color: '#F59E0B' }
+                ]}
+              />
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm space-y-2.5">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Quick Actions
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInitiateModal(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#1D4ED8] hover:bg-[#1E40AF] text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Initiate Payout (Maker)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentLinkModal(true)}
+                  className="w-full py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Generate Payment Link</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ========================================================================= */
+        /* 2. LEAD VIEW (DASHBOARD 3: "Payment Operations Dashboard")               */
+        /* ========================================================================= */
+        <div className="space-y-5">
+          {/* Top 5 KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <StatCard
+              title="Total Payments"
+              value={totalPaymentsCount}
+              icon={Banknote}
+              color="royal"
+              subtitle="All registered ledger entries"
+            />
+            <StatCard
+              title="Pending Approval"
+              value={pendingApprovalCount}
+              icon={Clock}
+              color="yellow"
+              subtitle="Pending checker review"
+            />
+            <StatCard
+              title="In Progress"
+              value={inProgressPaymentsCount}
+              icon={RefreshCw}
+              color="sky"
+              subtitle="Pending gateway settlement"
+            />
+            <StatCard
+              title="Completed"
+              value={completedPaymentsCount}
+              icon={CheckCircle2}
+              color="emerald"
+              subtitle="Successfully settled"
+            />
+            <StatCard
+              title="Failed / On Hold"
+              value={failedPaymentsCount}
+              icon={AlertTriangle}
+              color="rose"
+              subtitle="Requires review or retry"
+            />
+          </div>
+
+          {/* 3-Column Middle Section: Flow Chart + Donut + Quick Actions */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Column 1 (5 cols): Payment Flow Chart */}
+            <div className="lg:col-span-5 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">Payment Flow</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Initiated vs Completed payouts (Weekly volume)</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] font-semibold">
+                    <span className="flex items-center gap-1.5 text-blue-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" /> Initiated
+                    </span>
+                    <span className="flex items-center gap-1.5 text-emerald-500">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Settled
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-44 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={paymentFlowData}>
+                      <defs>
+                        <linearGradient id="colorInitiated" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#1D4ED8" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#1D4ED8" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorSettled" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0F172A',
+                          borderRadius: '12px',
+                          border: 'none',
+                          fontSize: '11px',
+                          color: '#fff'
+                        }}
+                      />
+                      <Area type="monotone" dataKey="initiated" stroke="#1D4ED8" strokeWidth={2} fillOpacity={1} fill="url(#colorInitiated)" />
+                      <Area type="monotone" dataKey="completed" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorSettled)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 2 (4 cols): Payment by Type Donut */}
+            <DonutChartCard
+              className="lg:col-span-4"
+              title="Payment by Type"
+              subtitle="Settlement & income distribution"
+              centerCount={totalPaymentsCount}
+              centerLabel="Txns"
+              data={paymentDonutData}
+            />
+
+            {/* Column 3 (3 cols): Quick Actions */}
+            <QuickActionsCard
+              className="lg:col-span-3"
+              title="Quick Actions"
+              actions={paymentLeadActions}
+            />
+          </div>
+
+          {/* Horizontal Payment Category & Party-Wise Tab Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200 dark:border-slate-800">
+            {PAYMENT_NAV_CATEGORIES.map(cat => {
+              const isActive = activeCategory.key === cat.key;
+              const cnt = categoryCounts[cat.key];
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => navigate(`/payment/${cat.slug}`)}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#1D4ED8] text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  {cnt}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+                  <span>{cat.label}</span>
+                  {typeof cnt === 'number' && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {cnt}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
       {/* Main Payment Operations Header / Filter Bar (delegated when inside Income or Expenses) */}
       {activeCategory.key === 'INCOME' ? (
@@ -569,6 +1027,27 @@ export const PaymentManagement: React.FC = () => {
             pendingLabel={activeCategory.key === 'AGENT_DEPOSIT_LIABILITIES' ? 'Held Deposits' : 'Pending / Held'}
             inProgressLabel="In Progress / Processing"
             completedLabel="Completed / Settled"
+            pendingStatusValue={
+              activeCategory.key === 'AGENT_DEPOSIT_LIABILITIES'
+                ? 'HELD'
+                : activeCategory.key === 'MAKER_CHECKER_APPROVALS'
+                ? 'Pending Checker Review'
+                : 'PENDING'
+            }
+            inProgressStatusValue={
+              activeCategory.key === 'AGENT_DEPOSIT_LIABILITIES'
+                ? 'ADJUSTED'
+                : activeCategory.key === 'MAKER_CHECKER_APPROVALS'
+                ? 'Approved'
+                : 'PROCESSING'
+            }
+            completedStatusValue={
+              activeCategory.key === 'AGENT_DEPOSIT_LIABILITIES'
+                ? 'REFUNDED'
+                : activeCategory.key === 'MAKER_CHECKER_APPROVALS'
+                ? 'Completed'
+                : 'COMPLETED'
+            }
             actions={
               <div className="flex items-center gap-2">
                 <button
@@ -1039,6 +1518,8 @@ export const PaymentManagement: React.FC = () => {
           />
         </div>
       )}
+    </div>
+  )}
 
       {/* Initiate Payout (Maker) Modal */}
       <Modal

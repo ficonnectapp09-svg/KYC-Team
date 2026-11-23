@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Maximize2,
@@ -77,7 +78,6 @@ const CATEGORY_DOC_CHECKLIST: Record<string, string[]> = {
   Vendor: ['PAN Card', 'Aadhaar Card', 'GST Certificate', 'Business Registration', 'Storefront / Business Photos', 'Bank Proof'],
   Agent: ['Aadhaar Card', 'PAN Card', 'Passport Photograph', 'Specimen Signature', 'Cancelled Cheque', 'Educational Certificate'],
   Manager: ['Aadhaar Card', 'PAN Card', 'Passport Photograph', 'Specimen Signature', 'Bank Passbook / Cheque', 'Degree Certificate'],
-  'Sub Admin': ['Aadhaar Card', 'PAN Card', 'Authority Letter', 'Bank Passbook', 'Specimen Signature', 'Profile Photograph'],
   'Delivery Partner': ['Driving License', 'Vehicle RC', 'Commercial Insurance', 'Aadhaar Card', 'Profile Photo'],
   Technician: ['Trade Certificate / ITI', 'Aadhaar Card', 'PAN Card', 'Workshop / Profile Photo'],
   'KYC Team Employee': ['Background Verification (BGV) Report', 'Aadhaar / ID Proof', 'PAN Card', 'Degree Certificate', 'Offer Letter'],
@@ -485,8 +485,8 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
   // Helper for rendering details
   const details = liveReq.applicantDetails || {};
 
-  return (
-    <div className="fixed inset-0 z-50 w-screen h-screen m-0 p-0 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 z-[100] w-screen h-screen m-0 p-0 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
       <div className="flex flex-col w-full h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
         {/* ========================================================================= */}
         {/* TOP COMMAND BAR                                                           */}
@@ -1155,13 +1155,17 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">PAN Number</span>
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                          {unmaskedSensitive?.pan || details.panNumberMasked || (details.pan ? (details.pan.length > 4 ? `••••••${details.pan.slice(-4)}` : '••••••••') : '•••••9012•')}
+                          {unmaskedSensitive
+                            ? unmaskedSensitive.pan
+                            : details.panNumberMasked || (details.pan ? (details.pan.length > 4 ? `••••••${details.pan.slice(-4)}` : '••••••••') : '•••••9012•')}
                         </div>
                       </div>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Aadhaar Number</span>
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                          {unmaskedSensitive?.aadhaar || details.aadhaarNumberMasked || (details.aadhaar ? `•••• •••• ${details.aadhaar.slice(-4)}` : '•••• •••• 8812')}
+                          {unmaskedSensitive
+                            ? unmaskedSensitive.aadhaar
+                            : details.aadhaarNumberMasked || (details.aadhaar ? `•••• •••• ${details.aadhaar.slice(-4)}` : '•••• •••• 8812')}
                         </div>
                       </div>
                       {(details.gst !== undefined || details.gstNumber || unmaskedSensitive?.gst) && (
@@ -1674,29 +1678,29 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
                   {/* RE-UPLOAD REQUEST FORM */}
                   {actionMode === 'REUPLOAD' && (
-                    <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/80 space-y-3">
+                    <div className="p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 shadow-sm space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-amber-300 text-xs flex items-center gap-1.5">
-                          <RefreshCw className="w-4 h-4" />
+                        <span className="font-bold text-amber-800 dark:text-amber-300 text-xs flex items-center gap-1.5">
+                          <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                           Request Document Re-upload
                         </span>
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="text-[11px] text-slate-400 hover:text-white"
+                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
                         >
                           Cancel
                         </button>
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 mb-1.5">
                           Target Document Needing Re-upload
                         </label>
                         <select
                           value={selectedDocForReupload}
                           onChange={e => setSelectedDocForReupload(e.target.value)}
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
                           {documents.map((d, i) => (
                             <option key={i} value={d.docType}>
@@ -1707,7 +1711,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 mb-1.5">
                           Deficiency Reason & Applicant Instructions (Mandatory)
                         </label>
                         <textarea
@@ -1715,23 +1719,23 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           onChange={e => setActionReason(e.target.value)}
                           rows={2}
                           placeholder="e.g. Scan is blurred or corners cut off. Please upload full high-resolution image."
-                          className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
                         />
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => handleExecuteAction('REUPLOAD')}
                           disabled={submittingAction || !actionReason.trim()}
-                          className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs disabled:opacity-50"
+                          className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs disabled:opacity-50 transition-colors shadow-sm"
                         >
                           {submittingAction ? 'Sending Request...' : 'Send Re-upload Request'}
                         </button>
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors"
                         >
                           Back
                         </button>
@@ -1924,6 +1928,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

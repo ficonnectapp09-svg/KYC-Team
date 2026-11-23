@@ -1322,19 +1322,49 @@ export class KycController {
         `${currentUser.name} (${currentUser.role}) revealed unmasked PAN/Aadhaar/Bank credentials for verification.`
       );
 
+      const resolvedPan = rawPan ||
+        kycRequest.applicantDetails?.panNumber ||
+        kycRequest.applicantDetails?.pan ||
+        (kycRequest as any).pan ||
+        (kycRequest.documents?.find((d: any) => d.docType?.toLowerCase().includes('pan')) as any)?.documentNumber ||
+        'Not Available';
+
+      const resolvedAadhaar = rawAadhaar ||
+        kycRequest.applicantDetails?.aadhaarNumber ||
+        kycRequest.applicantDetails?.aadhaar ||
+        (kycRequest as any).aadhaar ||
+        (kycRequest.documents?.find((d: any) => d.docType?.toLowerCase().includes('aadhaar') || d.docType?.toLowerCase().includes('aadhar')) as any)?.documentNumber ||
+        'Not Available';
+
+      const resolvedGst = rawGst ||
+        kycRequest.applicantDetails?.gst ||
+        kycRequest.applicantDetails?.gstNumber ||
+        (kycRequest as any).gst ||
+        'Unregistered';
+
+      const resolvedBankAccount = rawAccountNumber ||
+        kycRequest.applicantDetails?.bankDetails?.accountNumber ||
+        (kycRequest as any).accountNumber ||
+        'Not Available';
+
+      const resolvedIfsc = rawIfsc ||
+        kycRequest.applicantDetails?.bankDetails?.ifscCode ||
+        (kycRequest as any).ifscCode ||
+        'Not Available';
+
       return res.json({
         success: true,
         data: {
-          pan: rawPan || kycRequest.applicantDetails?.panNumber || 'Available in Verified Document Preview',
-          panNumber: rawPan || kycRequest.applicantDetails?.panNumber || 'Available in Verified Document Preview',
-          aadhaar: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
-          aadhaarNumber: rawAadhaar || kycRequest.applicantDetails?.aadhaarNumber || 'Available in Verified Document Preview',
-          gst: rawGst || kycRequest.applicantDetails?.gst || kycRequest.applicantDetails?.gstNumber || 'Unregistered',
-          gstNumber: rawGst || kycRequest.applicantDetails?.gst || kycRequest.applicantDetails?.gstNumber || 'Unregistered',
-          bankAccount: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
-          accountNumber: rawAccountNumber || kycRequest.applicantDetails?.bankDetails?.accountNumber || 'Available in Verified Document Preview',
-          ifsc: rawIfsc || kycRequest.applicantDetails?.bankDetails?.ifscCode || 'Available in Verified Document Preview',
-          ifscCode: rawIfsc || kycRequest.applicantDetails?.bankDetails?.ifscCode || 'Available in Verified Document Preview',
+          pan: resolvedPan,
+          panNumber: resolvedPan,
+          aadhaar: resolvedAadhaar,
+          aadhaarNumber: resolvedAadhaar,
+          gst: resolvedGst,
+          gstNumber: resolvedGst,
+          bankAccount: resolvedBankAccount,
+          accountNumber: resolvedBankAccount,
+          ifsc: resolvedIfsc,
+          ifscCode: resolvedIfsc,
           revealedBy: currentUser.name,
           revealedAt: new Date().toISOString()
         }
@@ -1461,8 +1491,20 @@ export class KycController {
           resolvedAt: new Date(),
           resolutionNotes: notes || 'Resolved by KYC Team.'
         };
-      } else if (action === 'UPDATE_STATUS' && status) {
-        ticket.status = status as any;
+      } else if (action === 'UPDATE_STATUS') {
+        const newStatus = status || 'In Progress';
+        ticket.status = newStatus as any;
+        if (notes) {
+          ticket.internalNotes.push({
+            noteId: generateId('NOTE'),
+            authorId: currentUser.employeeId,
+            authorName: currentUser.name,
+            department: Department.KYC,
+            note: `[STATUS UPDATE - ${newStatus}]: ${notes}`,
+            isDepartmentPrivate: false,
+            timestamp: new Date()
+          });
+        }
       }
 
       ticket.lastUpdated = new Date();
