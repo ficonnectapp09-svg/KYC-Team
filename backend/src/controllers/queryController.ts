@@ -94,7 +94,48 @@ export class QueryController {
       if (resolvedCategory.userTypes && resolvedCategory.userTypes.length > 0) {
         andClauses.push({ userType: { $in: resolvedCategory.userTypes } });
       }
-      if (status && status !== 'All') andClauses.push({ status });
+      if (status && status !== 'All') {
+        const s = String(status).trim();
+        if (s === 'New / Waiting / Overdue' || s === 'Pending' || s === 'PENDING') {
+          andClauses.push({
+            status: {
+              $in: [
+                QueryStatus.NEW,
+                QueryStatus.WAITING_FOR_RESPONSE,
+                QueryStatus.OVERDUE,
+                'New',
+                'Waiting for Response',
+                'Overdue'
+              ]
+            }
+          });
+        } else if (s === 'Assigned / In Progress' || s === 'IN_PROGRESS' || s === 'In Progress & Assigned') {
+          andClauses.push({
+            status: {
+              $in: [
+                QueryStatus.ASSIGNED,
+                QueryStatus.IN_PROGRESS,
+                QueryStatus.REOPENED,
+                QueryStatus.TRANSFERRED_TO_KYC,
+                QueryStatus.TRANSFERRED_TO_PAYMENT,
+                'Assigned',
+                'In Progress',
+                'Reopened',
+                'Transferred to KYC',
+                'Transferred to Payment'
+              ]
+            }
+          });
+        } else if (s === 'Resolved' || s === 'Completed' || s === 'RESOLVED') {
+          andClauses.push({
+            status: {
+              $in: [QueryStatus.RESOLVED, 'Resolved', 'RESOLVED', 'Completed']
+            }
+          });
+        } else {
+          andClauses.push({ status: s });
+        }
+      }
       if (priority && priority !== 'All') andClauses.push({ priority });
       if (category && category !== 'All') andClauses.push({ category });
       if (assignedEmployeeId && assignedEmployeeId !== 'All') {
@@ -318,6 +359,13 @@ export class QueryController {
 
       if (!query) {
         return res.status(404).json({ success: false, message: 'Query not found.' });
+      }
+
+      if (query.status === QueryStatus.RESOLVED || String(query.status).toLowerCase() === 'resolved') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot transfer a resolved ticket. Please reopen the query first before initiating a transfer.'
+        });
       }
 
       const fromDept = query.currentDepartment;

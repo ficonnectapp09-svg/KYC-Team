@@ -128,6 +128,7 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           isActive={
             onStatusChange
               ? statusFilter === (pendingStatusValue || 'Unassigned') ||
+                statusFilter === 'New / Waiting / Overdue' ||
                 statusFilter === 'Pending' ||
                 statusFilter === 'PENDING' ||
                 statusFilter === 'HELD' ||
@@ -146,6 +147,7 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
             isActive={
               onStatusChange
                 ? statusFilter === (inProgressStatusValue || 'In Progress') ||
+                  statusFilter === 'Assigned / In Progress' ||
                   statusFilter === 'PROCESSING' ||
                   statusFilter === 'Processing' ||
                   statusFilter === 'Assigned' ||
@@ -163,6 +165,7 @@ export const DepartmentTabHeader: React.FC<DepartmentTabHeaderProps> = ({
           isActive={
             onStatusChange
               ? statusFilter === (completedStatusValue || 'Approved') ||
+                statusFilter === 'Resolved' ||
                 statusFilter === 'Completed' ||
                 statusFilter === 'COMPLETED' ||
                 statusFilter === 'Settled' ||

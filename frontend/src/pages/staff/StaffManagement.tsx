@@ -20,7 +20,9 @@ import {
   Play,
   Square,
   AlertTriangle,
-  CreditCard
+  CreditCard,
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { apiFetch, uploadMediaFile } from '../../services/api';
 import { Employee } from '../../types';
@@ -476,7 +478,371 @@ export const StaffManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {selectedEmp ? (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* Top Breadcrumb & Navigation Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedEmp(null)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all shadow-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Staff Directory</span>
+              </button>
+              <div className="h-5 w-[1px] bg-slate-200 dark:bg-slate-700" />
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Employee 360° Operational Profile</span>
+                  <span className="text-xs font-mono font-normal text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                    {selectedEmp.employeeId}
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Detailed operational profile, department hierarchy, role permissions, live attendance, payroll cycle & activity history
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedEmp(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                title="Close Profile"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Profile Card Body */}
+          <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 text-xs">
+            <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-4">
+                {selectedEmp.photo ? (
+                  <img
+                    src={selectedEmp.photo}
+                    alt={selectedEmp.name}
+                    className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white text-xl font-bold flex items-center justify-center shadow-sm">
+                    {selectedEmp.name.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white">{selectedEmp.name}</h4>
+                  <p className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                    {selectedEmp.designation} ({selectedEmp.department})
+                  </p>
+                </div>
+              </div>
+              <Badge variant={selectedEmp.status === 'active' ? 'success' : 'danger'}>
+                {selectedEmp.status.toUpperCase()}
+              </Badge>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
+              {([
+                ['info', 'Profile & Controls'],
+                ['attendance', 'Attendance'],
+                ['performance', 'Performance & Tasks'],
+                ['salary', 'Salary & Activity History']
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setProfileTab(key)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                    profileTab === key
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {profileTab === 'info' && (
+              <div className="space-y-4">
+                {/* Contact & Location */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Contact & Workplace Details
+                    </div>
+                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContactForm({
+                            phone: selectedEmp.phone || '',
+                            address: selectedEmp.address || '',
+                            workLocation: selectedEmp.workLocation || ''
+                          });
+                          setShowEditContactModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>Edit Details</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Email</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.email}>{selectedEmp.email}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Phone</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.phone || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Work Location</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.workLocation || 'Main Office'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Residential Address</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.address || 'Not Provided'}>{selectedEmp.address || 'Not Provided'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Employment & Role Context */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Employment & Hierarchy Profile
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Department</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.department}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Designation & Role</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.designation} ({selectedEmp.role})</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Employment Type</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.employmentType || 'Full-time'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Joining Date</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                        {selectedEmp.joiningDate ? new Date(selectedEmp.joiningDate).toLocaleDateString() : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Reporting Lead</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.reportingLead || 'Department Lead'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Payroll Cycle</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.salaryCycle || 'Monthly'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Permissions Scope */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Backoffice Role Permissions
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedEmp.permissions && selectedEmp.permissions.length > 0 ? (
+                      selectedEmp.permissions.map((p, idx) => (
+                        <span key={idx} className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-semibold border border-indigo-100 dark:border-indigo-900">
+                          {p}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-400 text-xs">Standard operational scope for {selectedEmp.role}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bank Account */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Disbursement Bank Details
+                    </div>
+                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBankForm({
+                            bankName: selectedEmp.bankDetails?.bankName || '',
+                            accountHolder: selectedEmp.bankDetails?.accountHolder || selectedEmp.name,
+                            accountNumber: selectedEmp.bankDetails?.accountNumber || '',
+                            ifscCode: selectedEmp.bankDetails?.ifscCode || ''
+                          });
+                          setShowEditBankModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
+                      >
+                        <CreditCard className="w-3 h-3" />
+                        <span>Edit Bank Info</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Bank Name</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.bankName || 'Not Provided'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Holder</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.accountHolder || selectedEmp.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Number</div>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                        {selectedEmp.bankDetails?.accountNumber ? `••••${selectedEmp.bankDetails.accountNumber.slice(-4)}` : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400 font-bold text-[10px] uppercase">IFSC Code</div>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.ifscCode || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    Account Controls (Preserves Audit History)
+                  </span>
+                  {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400 italic">
+                        Self-modification of status is locked to safeguard audit integrity.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                          setPasswordError(null);
+                          setShowChangePasswordModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-colors"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>Change Password</span>
+                      </button>
+                    </div>
+                  ) : isLead ? (
+                    <div className="flex gap-2">
+                        {selectedEmp.status !== 'active' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'active')}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                          >
+                            Activate
+                          </button>
+                        )}
+                        {selectedEmp.status === 'active' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'inactive')}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold"
+                          >
+                            Mark On Leave / Inactive
+                          </button>
+                        )}
+                        {selectedEmp.status !== 'suspended' && (
+                          <button
+                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'suspended')}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                          >
+                            Suspend
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                </div>
+              </div>
+            )}
+
+            {profileTab === 'attendance' && (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {!(empOverview?.attendance?.length > 0) ? (
+                  <div className="p-4 text-slate-400">No attendance history logged yet.</div>
+                ) : (
+                  empOverview.attendance.map((a: any) => (
+                    <div key={a.attendanceId} className="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                      <span className="font-mono font-bold">{a.dateKey}</span>
+                      <span>{a.status} ({a.workHours}h)</span>
+                      <span className="text-slate-400">{a.remarks || '—'}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {profileTab === 'performance' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Total Tasks</div>
+                    <div className="text-lg font-black">{empOverview?.performance?.totalTasks ?? 0}</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Completion</div>
+                    <div className="text-lg font-black text-emerald-600">{empOverview?.performance?.completionRate ?? 0}%</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">KYC Handled</div>
+                    <div className="text-lg font-black">{empOverview?.performance?.kycAssignedCount ?? 0}</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold">Queries</div>
+                    <div className="text-lg font-black">{empOverview?.performance?.queriesAssignedCount ?? 0}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {profileTab === 'salary' && (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                <div>
+                  <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Salary Statements</div>
+                  {!(empOverview?.salaryHistory?.length > 0) ? (
+                    <div className="text-slate-400">No salary statements recorded yet.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {empOverview.salaryHistory.map((s: any) => (
+                        <div key={s.salaryId} className="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                          <span className="font-semibold">{s.periodLabel} ({s.salaryId})</span>
+                          <span className="font-bold">₹{s.netSalary?.toLocaleString()}</span>
+                          <Badge variant={s.status === 'Paid' ? 'success' : 'warning'}>{s.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Recent Audit Activity</div>
+                  {!(empOverview?.recentActivity?.length > 0) ? (
+                    <div className="text-slate-400">No activity logs recorded yet.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {empOverview.recentActivity.map((act: any, idx: number) => (
+                        <div key={idx} className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40">
+                          <div className="font-bold">{act.action}</div>
+                          <div className="text-slate-500">{act.details}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -1008,6 +1374,8 @@ export const StaffManagement: React.FC = () => {
       )}
         </>
       )}
+        </>
+      )}
 
       {/* Onboard Employee Modal */}
       <Modal
@@ -1331,340 +1699,6 @@ export const StaffManagement: React.FC = () => {
               </button>
             </div>
           </form>
-        )}
-      </Modal>
-
-      {/* Staff Profile Modal with Tabs: Profile, Attendance, Performance, Salary & Activity */}
-      <Modal
-        isOpen={!!selectedEmp}
-        onClose={() => setSelectedEmp(null)}
-        title="Employee 360° Operational Profile"
-        subtitle={selectedEmp?.employeeId}
-        maxWidth="6xl"
-        fullScreen={true}
-      >
-        {selectedEmp && (
-          <div className="space-y-4 text-xs">
-            <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60">
-              <div className="flex items-center gap-4">
-                {selectedEmp.photo ? (
-                  <img
-                    src={selectedEmp.photo}
-                    alt={selectedEmp.name}
-                    className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white text-xl font-bold flex items-center justify-center">
-                    {selectedEmp.name.charAt(0)}
-                  </div>
-                )}
-                <div>
-                  <h4 className="text-base font-bold text-slate-900 dark:text-white">{selectedEmp.name}</h4>
-                  <p className="text-indigo-600 dark:text-indigo-400 font-semibold">
-                    {selectedEmp.designation} ({selectedEmp.department})
-                  </p>
-                </div>
-              </div>
-              <Badge variant={selectedEmp.status === 'active' ? 'success' : 'danger'}>
-                {selectedEmp.status.toUpperCase()}
-              </Badge>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
-              {([
-                ['info', 'Profile & Controls'],
-                ['attendance', 'Attendance'],
-                ['performance', 'Performance & Tasks'],
-                ['salary', 'Salary & Activity History']
-              ] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setProfileTab(key)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-                    profileTab === key
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {profileTab === 'info' && (
-              <div className="space-y-4">
-                {/* Contact & Location */}
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Contact & Workplace Details
-                    </div>
-                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setContactForm({
-                            phone: selectedEmp.phone || '',
-                            address: selectedEmp.address || '',
-                            workLocation: selectedEmp.workLocation || ''
-                          });
-                          setShowEditContactModal(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        <span>Edit Details</span>
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Email</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.email}>{selectedEmp.email}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Phone</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.phone || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Work Location</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.workLocation || 'Main Office'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Residential Address</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={selectedEmp.address || 'Not Provided'}>{selectedEmp.address || 'Not Provided'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Employment & Role Context */}
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Employment & Organizational Hierarchy
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Department</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.department}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Designation / Role</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.designation} ({selectedEmp.role})</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Employment Type</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.employmentType || 'Full-time'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Joining Date</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                        {selectedEmp.joiningDate ? new Date(selectedEmp.joiningDate).toLocaleDateString() : 'N/A'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Reporting Lead</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.reportingLead || 'Department Lead'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Salary Cycle</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.salaryCycle || 'Monthly'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Operational Permissions */}
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Authorized Permissions & Operational Scopes
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedEmp.permissions && selectedEmp.permissions.length > 0 ? (
-                      selectedEmp.permissions.map((p, idx) => (
-                        <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                          {p}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-slate-400 text-xs">Standard operational scope for {selectedEmp.role}</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bank & Payroll Info */}
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Disbursement & Payroll Bank Details
-                    </div>
-                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBankForm({
-                            bankName: selectedEmp.bankDetails?.bankName || '',
-                            accountHolder: selectedEmp.bankDetails?.accountHolder || selectedEmp.name,
-                            accountNumber: selectedEmp.bankDetails?.accountNumber || '',
-                            ifscCode: selectedEmp.bankDetails?.ifscCode || ''
-                          });
-                          setShowEditBankModal(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
-                      >
-                        <CreditCard className="w-3 h-3" />
-                        <span>Edit Bank Info</span>
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Bank Name</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.bankName || 'Not Provided'}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Holder</div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.accountHolder || selectedEmp.name}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">Account Number</div>
-                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                        {selectedEmp.bankDetails?.accountNumber ? `••••${selectedEmp.bankDetails.accountNumber.slice(-4)}` : 'N/A'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 font-bold text-[10px] uppercase">IFSC Code</div>
-                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedEmp.bankDetails?.ifscCode || 'N/A'}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
-                  <span className="font-bold text-slate-700 dark:text-slate-300">
-                    Account Controls (Preserves Audit History)
-                  </span>
-                  {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) ? (
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-400 italic">
-                        Self-modification of status is locked to safeguard audit integrity.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                          setPasswordError(null);
-                          setShowChangePasswordModal(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-colors"
-                      >
-                        <Key className="w-3.5 h-3.5" />
-                        <span>Change Password</span>
-                      </button>
-                    </div>
-                  ) : isLead ? (
-                    <div className="flex gap-2">
-                        {selectedEmp.status !== 'active' && (
-                          <button
-                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'active')}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                          >
-                            Activate
-                          </button>
-                        )}
-                        {selectedEmp.status === 'active' && (
-                          <button
-                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'inactive')}
-                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold"
-                          >
-                            Mark On Leave / Inactive
-                          </button>
-                        )}
-                        {selectedEmp.status !== 'suspended' && (
-                          <button
-                            onClick={() => handleStatusChange(selectedEmp.employeeId, 'suspended')}
-                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold"
-                          >
-                            Suspend
-                          </button>
-                        )}
-                      </div>
-                    ) : null}
-                </div>
-              </div>
-            )}
-
-            {profileTab === 'attendance' && (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {!(empOverview?.attendance?.length > 0) ? (
-                  <div className="p-4 text-slate-400">No attendance history logged yet.</div>
-                ) : (
-                  empOverview.attendance.map((a: any) => (
-                    <div key={a.attendanceId} className="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                      <span className="font-mono font-bold">{a.dateKey}</span>
-                      <span>{a.status} ({a.workHours}h)</span>
-                      <span className="text-slate-400">{a.remarks || '—'}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            {profileTab === 'performance' && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-[10px] text-slate-400 uppercase font-bold">Total Tasks</div>
-                    <div className="text-lg font-black">{empOverview?.performance?.totalTasks ?? 0}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-[10px] text-slate-400 uppercase font-bold">Completion</div>
-                    <div className="text-lg font-black text-emerald-600">{empOverview?.performance?.completionRate ?? 0}%</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-[10px] text-slate-400 uppercase font-bold">KYC Handled</div>
-                    <div className="text-lg font-black">{empOverview?.performance?.kycAssignedCount ?? 0}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-[10px] text-slate-400 uppercase font-bold">Queries</div>
-                    <div className="text-lg font-black">{empOverview?.performance?.queriesAssignedCount ?? 0}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {profileTab === 'salary' && (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                <div>
-                  <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Salary Statements</div>
-                  {!(empOverview?.salaryHistory?.length > 0) ? (
-                    <div className="text-slate-400">No salary statements recorded yet.</div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {empOverview.salaryHistory.map((s: any) => (
-                        <div key={s.salaryId} className="flex justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                          <span className="font-semibold">{s.periodLabel} ({s.salaryId})</span>
-                          <span className="font-bold">₹{s.netSalary?.toLocaleString()}</span>
-                          <Badge variant={s.status === 'Paid' ? 'success' : 'warning'}>{s.status}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Recent Audit Activity</div>
-                  {!(empOverview?.recentActivity?.length > 0) ? (
-                    <div className="text-slate-400">No activity logs recorded yet.</div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {empOverview.recentActivity.map((act: any, idx: number) => (
-                        <div key={idx} className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40">
-                          <div className="font-bold">{act.action}</div>
-                          <div className="text-slate-500">{act.details}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         )}
       </Modal>
 

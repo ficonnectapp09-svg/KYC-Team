@@ -211,7 +211,14 @@ export const QueriesManagement: React.FC = () => {
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedQuery) return;
+    if (!selectedQuery) {
+      alert('Please select a query to transfer.');
+      return;
+    }
+    if (selectedQuery.status === 'Resolved' || String(selectedQuery.status).toLowerCase() === 'resolved') {
+      alert('Cannot transfer a resolved ticket. Please reopen the query first before initiating a transfer.');
+      return;
+    }
     try {
       const res = await apiFetch(`/queries/${selectedQuery.queryId}/transfer`, {
         method: 'POST',
@@ -377,11 +384,19 @@ export const QueriesManagement: React.FC = () => {
       icon: ArrowLeftRight,
       variant: 'secondary' as const,
       onClick: () => {
-        if (queries.length > 0) {
-          setSelectedQuery(queries[0]);
-          setShowTransferModal(true);
+        if (!selectedQuery) {
+          const eligible = queries.find(q => q.status !== 'Resolved');
+          if (eligible) {
+            setSelectedQuery(eligible);
+            setShowTransferModal(true);
+          } else if (queries.length > 0) {
+            setSelectedQuery(queries[0]);
+            setShowTransferModal(true);
+          } else {
+            alert('No queries available to transfer.');
+          }
         } else {
-          setShowCreateModal(true);
+          setShowTransferModal(true);
         }
       }
     },
@@ -647,8 +662,8 @@ export const QueriesManagement: React.FC = () => {
               icon={Clock}
               color="yellow"
               subtitle="Unassigned / awaiting response"
-              onClick={() => setStatusFilter(statusFilter === 'New' ? 'All' : 'New')}
-              isActive={statusFilter === 'New'}
+              onClick={() => setStatusFilter(statusFilter === 'New / Waiting / Overdue' ? 'All' : 'New / Waiting / Overdue')}
+              isActive={statusFilter === 'New / Waiting / Overdue' || statusFilter === 'New'}
             />
             <StatCard
               title="In Progress"
@@ -656,8 +671,8 @@ export const QueriesManagement: React.FC = () => {
               icon={RefreshCw}
               color="sky"
               subtitle="Active investigation"
-              onClick={() => setStatusFilter(statusFilter === 'In Progress' ? 'All' : 'In Progress')}
-              isActive={statusFilter === 'In Progress'}
+              onClick={() => setStatusFilter(statusFilter === 'Assigned / In Progress' ? 'All' : 'Assigned / In Progress')}
+              isActive={statusFilter === 'Assigned / In Progress' || statusFilter === 'In Progress'}
             />
             <StatCard
               title="Resolved"
@@ -720,8 +735,11 @@ export const QueriesManagement: React.FC = () => {
         departmentBadge="Queries Operations"
         summary={summary}
         pendingLabel="New / Waiting / Overdue"
+        pendingStatusValue="New / Waiting / Overdue"
         inProgressLabel="Assigned / In Progress"
+        inProgressStatusValue="Assigned / In Progress"
         completedLabel="Resolved"
+        completedStatusValue="Resolved"
         actions={
           <button
             onClick={() => {
@@ -741,6 +759,8 @@ export const QueriesManagement: React.FC = () => {
         onStatusChange={setStatusFilter}
         statusOptions={[
           { value: 'All', label: 'All Statuses' },
+          { value: 'New / Waiting / Overdue', label: 'New / Waiting / Overdue (Active Queue)' },
+          { value: 'Assigned / In Progress', label: 'Assigned / In Progress (Active Investigation)' },
           { value: 'New', label: 'New' },
           { value: 'Assigned', label: 'Assigned' },
           { value: 'In Progress', label: 'In Progress' },
@@ -1194,8 +1214,61 @@ export const QueriesManagement: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleTransfer} className="space-y-4 text-xs">
+          {/* Ticket Selection & Read-only Details */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Target Query Case</span>
+              {selectedQuery && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                  selectedQuery.status === 'Resolved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' :
+                  selectedQuery.status === 'New' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400' :
+                  'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'
+                }`}>
+                  {selectedQuery.status}
+                </span>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Select Case Ticket *</label>
+              <select
+                value={selectedQuery?.queryId || ''}
+                onChange={e => {
+                  const match = queries.find(q => q.queryId === e.target.value);
+                  if (match) setSelectedQuery(match);
+                }}
+                className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-200"
+              >
+                {!selectedQuery && <option value="">-- Choose Query Case to Transfer --</option>}
+                {queries.map(q => (
+                  <option key={q.queryId} value={q.queryId}>
+                    {q.queryId} — {q.subject} ({q.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedQuery && (
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 space-y-1">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-400">User / Requester:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">{selectedQuery.userName} ({selectedQuery.userType})</span>
+                </div>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-400">Current Department:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">{selectedQuery.currentDepartment || 'Queries Team'}</span>
+                </div>
+                {selectedQuery.status === 'Resolved' && (
+                  <div className="mt-2 p-2 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 rounded-lg text-[11px] border border-rose-200 dark:border-rose-800">
+                    ⚠️ This ticket is marked <strong>Resolved</strong>. Case transfers are only permitted for active open or under-investigation queries. Please reopen the ticket first.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div>
-            <label className="block font-bold mb-1">Destination Department</label>
+            <label className="block font-bold mb-1">Destination Department *</label>
             <select
               value={transferDest}
               onChange={e => setTransferDest(e.target.value)}
@@ -1219,7 +1292,11 @@ export const QueriesManagement: React.FC = () => {
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowTransferModal(false)} className="px-4 py-2">Cancel</button>
-            <button type="submit" className="px-4 py-2 rounded-xl bg-sky-600 text-white font-bold">
+            <button
+              type="submit"
+              disabled={!selectedQuery || selectedQuery.status === 'Resolved'}
+              className="px-4 py-2 rounded-xl bg-sky-600 disabled:opacity-50 text-white font-bold"
+            >
               Transfer & Preserve Shared Access
             </button>
           </div>
