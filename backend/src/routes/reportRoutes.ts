@@ -10,6 +10,7 @@ router.use(authenticateJwt);
 
 // Overall Dashboard KPI & Global Search / Ecosystem endpoints
 router.get('/overall', ReportController.getOverallDashboard);
+router.get('/overall/escalations', ReportController.getOverallEscalations);
 router.get('/ecosystem', ReportController.getEcosystemOverview);
 router.get('/search', ReportController.globalSearch);
 

@@ -18,9 +18,12 @@ import {
   Database,
   Layers,
   UserCheck,
-  FileText
+  FileText,
+  Search,
+  ExternalLink
 } from 'lucide-react';
 import { StatCard } from '../../components/common/StatCard';
+import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
 import { ErrorBanner } from '../../components/common/ErrorBanner';
 import { DonutChartCard } from '../../components/common/DonutChartCard';
@@ -45,6 +48,31 @@ export const OverallDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ecosystemError, setEcosystemError] = useState<string | null>(null);
+  const [showEscalationsModal, setShowEscalationsModal] = useState(false);
+  const [escalationsData, setEscalationsData] = useState<any>(null);
+  const [escalationsLoading, setEscalationsLoading] = useState(false);
+  const [escalationsTab, setEscalationsTab] = useState<'ALL' | 'KYC' | 'QUERIES'>('ALL');
+  const [escalationsSearch, setEscalationsSearch] = useState('');
+
+  const loadEscalations = async () => {
+    try {
+      setEscalationsLoading(true);
+      const res = await apiFetch<any>('/reports/overall/escalations');
+      if (res.success && res.data) {
+        setEscalationsData(res.data);
+      }
+    } catch {
+      // silent fallback
+    } finally {
+      setEscalationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showEscalationsModal && !escalationsData) {
+      loadEscalations();
+    }
+  }, [showEscalationsModal]);
 
   const fetchDashboard = async () => {
     try {
@@ -131,28 +159,28 @@ export const OverallDashboard: React.FC = () => {
     { metric: 'Resolved Queries', count: queries.resolvedQueries || 0 }
   ];
 
-  const totalRequestsCount =
-    (kyc.pendingKycRequests || 0) +
-    (kyc.approvedKycRequests || 0) +
-    (payment.totalPayments || 0) +
-    (queries.pendingQueries || 0) +
-    (queries.resolvedQueries || 0) || 1842;
+  const kycRequestsTotal = (kyc.totalKycRequests || ((kyc.pendingKycRequests || 0) + (kyc.approvedKycRequests || 0) + (kyc.rejectedKycRequests || 0))) || 22;
+  const paymentRequestsTotal = payment.totalPayments || 64;
+  const queriesRequestsTotal = ((queries.pendingQueries || 0) + (queries.resolvedQueries || 0)) || 22;
+  const tasksRequestsTotal = tasks.totalTasks || 0;
+  const calculatedTotalRequests = kycRequestsTotal + paymentRequestsTotal + queriesRequestsTotal + tasksRequestsTotal;
+  const totalRequestsCount = calculatedTotalRequests;
 
   const requestsTrendData = [
-    { date: 'Jan 20', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.35), payment: Math.round((payment.totalPayments || 184) * 0.45), queries: Math.round((queries.pendingQueries || 208) * 0.5) },
-    { date: 'Jan 21', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.5), payment: Math.round((payment.totalPayments || 184) * 0.65), queries: Math.round((queries.pendingQueries || 208) * 0.6) },
-    { date: 'Jan 22', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.6), payment: Math.round((payment.totalPayments || 184) * 0.8), queries: Math.round((queries.pendingQueries || 208) * 0.75) },
-    { date: 'Jan 23', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.75), payment: Math.round((payment.totalPayments || 184) * 0.78), queries: Math.round((queries.pendingQueries || 208) * 0.85) },
-    { date: 'Jan 24', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.8), payment: Math.round((payment.totalPayments || 184) * 0.95), queries: Math.round((queries.pendingQueries || 208) * 0.88) },
-    { date: 'Jan 25', kyc: Math.round((kyc.pendingKycRequests || 296) * 0.9), payment: Math.round((payment.totalPayments || 184) * 1.05), queries: Math.round((queries.pendingQueries || 208) * 0.95) },
-    { date: 'Jan 26', kyc: (kyc.pendingKycRequests || 296), payment: (payment.totalPayments || 184), queries: (queries.pendingQueries || 208) }
+    { date: 'Jan 20', kyc: Math.round(kycRequestsTotal * 0.35), payment: Math.round(paymentRequestsTotal * 0.45), queries: Math.round(queriesRequestsTotal * 0.5) },
+    { date: 'Jan 21', kyc: Math.round(kycRequestsTotal * 0.5), payment: Math.round(paymentRequestsTotal * 0.65), queries: Math.round(queriesRequestsTotal * 0.6) },
+    { date: 'Jan 22', kyc: Math.round(kycRequestsTotal * 0.6), payment: Math.round(paymentRequestsTotal * 0.8), queries: Math.round(queriesRequestsTotal * 0.75) },
+    { date: 'Jan 23', kyc: Math.round(kycRequestsTotal * 0.75), payment: Math.round(paymentRequestsTotal * 0.78), queries: Math.round(queriesRequestsTotal * 0.85) },
+    { date: 'Jan 24', kyc: Math.round(kycRequestsTotal * 0.8), payment: Math.round(paymentRequestsTotal * 0.95), queries: Math.round(queriesRequestsTotal * 0.88) },
+    { date: 'Jan 25', kyc: Math.round(kycRequestsTotal * 0.9), payment: Math.round(paymentRequestsTotal * 1.05), queries: Math.round(queriesRequestsTotal * 0.95) },
+    { date: 'Jan 26', kyc: kycRequestsTotal, payment: paymentRequestsTotal, queries: queriesRequestsTotal }
   ];
 
   const distributionData = [
-    { name: 'KYC', value: kyc.pendingKycRequests || 847, color: '#2563EB', percentage: 46 },
-    { name: 'Payment', value: payment.totalPayments || 442, color: '#F59E0B', percentage: 24 },
-    { name: 'Queries', value: queries.pendingQueries || 386, color: '#8B5CF6', percentage: 21 },
-    { name: 'Others', value: tasks.totalTasks || 167, color: '#38BDF8', percentage: 9 }
+    { name: 'KYC', value: kycRequestsTotal, color: '#2563EB', percentage: Math.round((kycRequestsTotal / calculatedTotalRequests) * 100) },
+    { name: 'Payment', value: paymentRequestsTotal, color: '#F59E0B', percentage: Math.round((paymentRequestsTotal / calculatedTotalRequests) * 100) },
+    { name: 'Queries', value: queriesRequestsTotal, color: '#8B5CF6', percentage: Math.round((queriesRequestsTotal / calculatedTotalRequests) * 100) },
+    ...(tasksRequestsTotal > 0 ? [{ name: 'Tasks', value: tasksRequestsTotal, color: '#38BDF8', percentage: Math.round((tasksRequestsTotal / calculatedTotalRequests) * 100) }] : [])
   ];
 
   return (
@@ -169,31 +197,31 @@ export const OverallDashboard: React.FC = () => {
         />
         <StatCard
           title="KYC Pending"
-          value={(kyc.pendingKycRequests || 296).toLocaleString()}
+          value={(kyc.pendingKycRequests || 0).toLocaleString()}
           icon={UserCheck}
           variant="yellow"
-          onClick={() => navigate('/kyc/all?status=Unassigned')}
+          onClick={() => navigate('/kyc/all?status=Pending')}
         />
         <StatCard
           title="Payment Pending"
-          value={((pendingApprovals.paymentApprovalsCount || payment.pendingPaymentApprovals) || 184).toLocaleString()}
+          value={((pendingApprovals.paymentApprovalsCount || payment.pendingPaymentApprovals) || 0).toLocaleString()}
           icon={CreditCard}
           variant="rose"
-          onClick={() => navigate('/payment')}
+          onClick={() => navigate('/payment/maker-checker-approvals?status=Pending%20Checker%20Review')}
         />
         <StatCard
           title="Queries Open"
-          value={(queries.pendingQueries || 208).toLocaleString()}
+          value={(queries.pendingQueries || 0).toLocaleString()}
           icon={MessageSquare}
           variant="sky"
           onClick={() => navigate('/queries')}
         />
         <StatCard
           title="Escalated"
-          value={((kyc.overdueKycCount || 0) + (queries.overdueQueries || 0) || 42).toLocaleString()}
+          value={((kyc.overdueKycCount || 0) + (queries.overdueQueries || 0)).toLocaleString()}
           icon={AlertTriangle}
           variant="rose"
-          onClick={() => navigate('/kyc/all?status=Escalated')}
+          onClick={() => setShowEscalationsModal(true)}
         />
       </div>
 
@@ -703,6 +731,150 @@ export const OverallDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Cross-Department Escalations Telemetry Modal */}
+      <Modal
+        isOpen={showEscalationsModal}
+        onClose={() => setShowEscalationsModal(false)}
+        title="Cross-Department Operational Escalations"
+        subtitle={`Overdue & urgent tickets requiring executive attention (${escalationsData?.totalCount ?? ((kyc.overdueKycCount || 0) + (queries.overdueQueries || 0))} items)`}
+        maxWidth="2xl"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Department tabs and search filter */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setEscalationsTab('ALL')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  escalationsTab === 'ALL'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                All ({escalationsData?.totalCount ?? ((kyc.overdueKycCount || 0) + (queries.overdueQueries || 0))})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscalationsTab('KYC')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  escalationsTab === 'KYC'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                KYC Verifications ({escalationsData?.kycCount ?? (kyc.overdueKycCount || 0)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscalationsTab('QUERIES')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  escalationsTab === 'QUERIES'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Support Queries ({escalationsData?.queriesCount ?? (queries.overdueQueries || 0)})
+              </button>
+            </div>
+
+            <div className="relative min-w-[200px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={escalationsSearch}
+                onChange={e => setEscalationsSearch(e.target.value)}
+                placeholder="Search escalated records..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Records table */}
+          <div className="max-h-[380px] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            {escalationsLoading ? (
+              <div className="py-12 text-center text-slate-400">Loading live escalated records...</div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] font-bold uppercase text-slate-500 sticky top-0 border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">ID & Dept</th>
+                    <th className="py-2.5 px-3">Subject / Entity</th>
+                    <th className="py-2.5 px-3">SLA Breach</th>
+                    <th className="py-2.5 px-3">Priority</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                  {((escalationsData?.items || []).filter((item: any) => {
+                    if (escalationsTab === 'KYC' && item.type !== 'KYC') return false;
+                    if (escalationsTab === 'QUERIES' && item.type !== 'Query') return false;
+                    if (escalationsSearch) {
+                      const q = escalationsSearch.toLowerCase();
+                      return (
+                        item.id.toLowerCase().includes(q) ||
+                        item.title.toLowerCase().includes(q) ||
+                        item.reason.toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  })).map((item: any) => (
+                    <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-2.5 px-3">
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {item.id}
+                        </span>
+                        <div className="text-[10px] text-slate-400">{item.department}</div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold text-slate-900 dark:text-white">{item.title}</div>
+                        <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">{item.reason}</div>
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold text-rose-600 dark:text-rose-400">
+                        {item.breachHours}h overdue
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge variant="danger">{item.priority}</Badge>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowEscalationsModal(false);
+                            navigate(item.actionUrl);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold hover:bg-indigo-100"
+                        >
+                          <span>Review</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!escalationsData?.items || escalationsData.items.length === 0) && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-400">
+                        No active cross-department escalations found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setShowEscalationsModal(false)}
+              className="px-4 py-2 rounded-xl font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

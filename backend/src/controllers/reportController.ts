@@ -80,7 +80,7 @@ export class ReportController {
       ]);
 
       // 6. Salary metrics & Pending Approvals
-      const [paidSalaries, pendingSalaries, pendingFinancialApprovals, pendingLeaves, recentActivities] =
+      const [paidSalaries, pendingSalaries, pendingFinancialApprovals, pendingFinancialApprovalsCount, totalTransactionsCount, pendingLeaves, recentActivities] =
         await Promise.all([
           SalaryRecord.find({ status: SalaryStatus.PAID }).lean(),
           SalaryRecord.find({ status: SalaryStatus.SUBMITTED_FOR_OVERALL_APPROVAL }).lean(),
@@ -88,8 +88,12 @@ export class ReportController {
             status: { $in: [ApprovalStatus.SUBMITTED, ApprovalStatus.PENDING_CHECKER] }
           })
             .sort({ submittedAt: -1 })
-            .limit(8)
+            .limit(10)
             .lean(),
+          FinancialApproval.countDocuments({
+            status: { $in: [ApprovalStatus.SUBMITTED, ApprovalStatus.PENDING_CHECKER] }
+          }),
+          PaymentTransaction.countDocuments(),
           AttendanceRecord.find({ leaveApprovalStatus: 'Pending' }).limit(8).lean(),
           AuditTrail.find().sort({ timestamp: -1 }).limit(12).lean()
         ]);
@@ -234,6 +238,7 @@ export class ReportController {
             employeesOnLeave
           },
           kyc: {
+            totalKycRequests: pendingKycRequests + approvedKycRequests + rejectedKycRequests,
             pendingKycRequests,
             approvedKycRequests,
             rejectedKycRequests,
@@ -247,6 +252,8 @@ export class ReportController {
             outstandingAgentDepositLiability: financialMetrics.liabilities.outstandingAgentDepositLiability,
             totalSalariesPaid,
             pendingSalaryPayments: pendingSalaryAmount,
+            pendingPaymentApprovals: pendingFinancialApprovalsCount,
+            totalPayments: totalTransactionsCount,
             incomeBreakdown: financialMetrics.incomeBreakdown,
             outgoingBreakdown: financialMetrics.outgoingBreakdown
           },
@@ -267,7 +274,7 @@ export class ReportController {
           employeePerformance,
           pendingApprovals: {
             salaryApprovalsCount: pendingSalaries.length,
-            paymentApprovalsCount: pendingFinancialApprovals.length,
+            paymentApprovalsCount: pendingFinancialApprovalsCount,
             leaveApprovalsCount: pendingLeaves.length,
             salaryItems: pendingSalaries.slice(0, 5),
             paymentItems: pendingFinancialApprovals.slice(0, 5)
@@ -645,6 +652,82 @@ export class ReportController {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="fic_backoffice_${moduleType}_report_${nowStr}.csv"`);
       return res.status(200).send(csvContent);
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Cross-department Escalated Records Telemetry (KYC + Queries)
+   */
+  static async getOverallEscalations(req: Request, res: Response): Promise<any> {
+    try {
+      const now = new Date();
+      const kycSlaHours = 24;
+      const querySlaHours = 4;
+      const kycCutoff = new Date(now.getTime() - kycSlaHours * 60 * 60 * 1000);
+      const queryCutoff = new Date(now.getTime() - querySlaHours * 60 * 60 * 1000);
+
+      const [overdueKyc, overdueQueries] = await Promise.all([
+        KycRequest.find({
+          status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] },
+          $or: [
+            { isEscalated: true },
+            { submissionDate: { $lt: kycCutoff } }
+          ]
+        })
+          .sort({ submissionDate: 1 })
+          .lean(),
+        QueryTicket.find({
+          status: { $ne: QueryStatus.RESOLVED },
+          $or: [
+            { isEscalated: true },
+            { priority: 'Urgent' },
+            { createdAt: { $lt: queryCutoff } }
+          ]
+        })
+          .sort({ createdAt: 1 })
+          .lean()
+      ]);
+
+      const items = [
+        ...overdueKyc.map((k: any) => ({
+          id: k.requestId,
+          type: 'KYC',
+          title: `${k.applicantName} (${k.applicantType})`,
+          department: Department.KYC,
+          status: k.status,
+          priority: k.priority || (k.isEscalated ? 'Urgent' : 'High'),
+          assignedTo: k.assignedEmployeeName || 'Unassigned',
+          breachHours: Math.max(0, Math.round((now.getTime() - new Date(k.submissionDate || k.createdAt).getTime()) / (1000 * 60 * 60))),
+          reason: k.escalationReason || 'SLA breached (>24h in verification)',
+          actionUrl: `/kyc?id=${k.requestId}`,
+          createdAt: k.submissionDate || k.createdAt
+        })),
+        ...overdueQueries.map((q: any) => ({
+          id: q.queryId,
+          type: 'Query',
+          title: `${q.subject || 'Support Ticket'} - ${q.userName}`,
+          department: q.currentDepartment || Department.QUERIES,
+          status: q.status,
+          priority: q.priority,
+          assignedTo: q.assignedEmployeeName || 'Unassigned',
+          breachHours: Math.max(0, Math.round((now.getTime() - new Date(q.createdAt).getTime()) / (1000 * 60 * 60))),
+          reason: q.isEscalated ? 'Escalated by Lead' : 'SLA breached (>4h response window)',
+          actionUrl: `/queries?id=${q.queryId}`,
+          createdAt: q.createdAt
+        }))
+      ];
+
+      return res.json({
+        success: true,
+        data: {
+          totalCount: items.length,
+          kycCount: overdueKyc.length,
+          queriesCount: overdueQueries.length,
+          items
+        }
+      });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
     }

@@ -77,10 +77,30 @@ export class PaymentController {
 
   static async getPaymentKpis(req: Request, res: Response): Promise<any> {
     try {
-      const metrics = await FinancialLedgerService.getFinancialMetrics();
+      const [metrics, allTxns] = await Promise.all([
+        FinancialLedgerService.getFinancialMetrics(),
+        PaymentTransaction.find().select('financialClassification transactionType toParty status').lean()
+      ]);
+
+      const vendorPayoutCount = allTxns.filter((t) => t.toParty?.type === 'Vendor' || /vendor/i.test(t.transactionType)).length;
+      const partnerEarningCount = allTxns.filter((t) => ['Delivery Partner', 'Technician', 'Agent'].includes(t.toParty?.type) || /technician|delivery|agent/i.test(t.transactionType)).length;
+      const ordersIncomeCount = allTxns.filter((t) => t.financialClassification === 'Income').length;
+      const depositsLiabilityCount = allTxns.filter((t) => t.financialClassification === 'Liability' || t.status === 'REFUNDED' || /deposit/i.test(t.transactionType)).length;
+      const salariesCount = allTxns.filter((t) => /salary/i.test(t.transactionType) || t.toParty?.type === 'Employee').length;
+
       return res.json({
         success: true,
-        data: metrics
+        data: {
+          ...metrics,
+          typeBreakdown: {
+            vendorPayout: vendorPayoutCount,
+            partnerEarning: partnerEarningCount,
+            ordersIncome: ordersIncomeCount,
+            depositsLiability: depositsLiabilityCount,
+            salaries: salariesCount,
+            totalTransactions: allTxns.length
+          }
+        }
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
@@ -134,7 +154,7 @@ export class PaymentController {
     }
     if (status && status !== 'All') {
       if (status === 'PROCESSING' || status === 'Processing' || status === 'In Progress') {
-        andClauses.push({ status: { $in: ['PROCESSING', 'PENDING'] } });
+        andClauses.push({ status: { $in: ['PROCESSING', 'Processing', 'In Progress'] } });
       } else {
         andClauses.push({ status });
       }

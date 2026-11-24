@@ -92,6 +92,7 @@ export interface IKycRequest extends Document {
   routedToPayment: boolean;
   paymentTaskId?: string;
   isEscalated?: boolean;
+  escalatedTo?: string | null;
   escalatedAt?: Date | null;
   escalatedBy?: string | null;
   escalationReason?: string | null;
@@ -206,6 +207,7 @@ const KycRequestSchema = new Schema<IKycRequest>({
   routedToPayment: { type: Boolean, default: false, index: true },
   paymentTaskId: { type: String, default: null },
   isEscalated: { type: Boolean, default: false, index: true },
+  escalatedTo: { type: String, default: null },
   escalatedAt: { type: Date, default: null },
   escalatedBy: { type: String, default: null },
   escalationReason: { type: String, default: null }

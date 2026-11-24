@@ -1115,10 +1115,11 @@ export class KycController {
         kycRequest.priority = 'Urgent';
         kycRequest.status = KycStatus.IN_PROGRESS;
         kycRequest.isEscalated = true;
+        kycRequest.escalatedTo = req.body.escalatedTo || 'Total Lead';
         kycRequest.escalatedAt = new Date();
         kycRequest.escalatedBy = currentUser.name;
         kycRequest.escalationReason = reason || remarks || 'Requires Team Lead review';
-        const escRemarks = `ESCALATED by ${currentUser.name}: ${reason || remarks || 'Requires Team Lead review'}`;
+        const escRemarks = `ESCALATED to Total Lead by ${currentUser.name}: ${reason || remarks || 'Requires Total Lead review'}`;
         kycRequest.verificationRemarks = escRemarks;
         kycRequest.approvalHistory = kycRequest.approvalHistory || [];
         kycRequest.approvalHistory.push({
@@ -1136,12 +1137,12 @@ export class KycController {
 
         await NotificationItem.create({
           notificationId: generateId('NOTIF'),
-          targetRole: Role.KYC_LEAD,
-          targetDepartment: Department.KYC,
-          title: `KYC Escalated: ${kycRequest.requestId}`,
-          message: `${currentUser.name} escalated ${kycRequest.applicantName} (${kycRequest.applicantType}). Reason: ${reason || remarks || 'Needs review'}`,
+          targetRole: Role.OVERALL_LEAD,
+          targetDepartment: Department.OVERALL,
+          title: `KYC Escalated to Total Lead: ${kycRequest.requestId}`,
+          message: `${currentUser.name} escalated ${kycRequest.applicantName} (${kycRequest.applicantType}) to Total Lead. Reason: ${reason || remarks || 'Needs review'}`,
           type: 'KYC',
-          actionUrl: '/kyc'
+          actionUrl: '/overall'
         });
 
         await logAudit(
@@ -1149,12 +1150,12 @@ export class KycController {
           'KYC_ESCALATED',
           'KYC',
           kycRequest.requestId,
-          `KYC escalated to KYC Team Lead by ${currentUser.name}.`
+          `KYC escalated to Total Lead by ${currentUser.name}.`
         );
 
         return res.json({
           success: true,
-          message: 'KYC request escalated to Team Lead with Urgent priority.',
+          message: 'KYC request successfully escalated to Total Lead with Urgent priority.',
           data: kycRequest
         });
       }
@@ -1171,6 +1172,81 @@ export class KycController {
   static async escalateRequest(req: Request, res: Response): Promise<any> {
     req.body = { ...req.body, requestId: req.params.id, action: 'ESCALATE' };
     return KycController.verifyKycAction(req, res);
+  }
+
+  /**
+   * Batch Escalate multiple KYC Requests to Total Lead
+   */
+  static async escalateBatchRequests(req: Request, res: Response): Promise<any> {
+    try {
+      const { requestIds, reason, remarks } = req.body;
+      const currentUser = req.user!;
+
+      if (!Array.isArray(requestIds) || requestIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'requestIds array is required.' });
+      }
+      if (!reason && !remarks) {
+        return res.status(400).json({ success: false, message: 'Escalation reason is mandatory.' });
+      }
+
+      const escalationReason = reason || remarks || 'Escalated to Total Lead';
+      const updatedList: string[] = [];
+
+      for (const reqId of requestIds) {
+        const kycRequest = await KycRequest.findOne(buildIdFilter('requestId', reqId));
+        if (kycRequest && ![KycStatus.APPROVED, KycStatus.REJECTED].includes(kycRequest.status)) {
+          kycRequest.priority = 'Urgent';
+          kycRequest.status = KycStatus.IN_PROGRESS;
+          kycRequest.isEscalated = true;
+          kycRequest.escalatedTo = 'Total Lead';
+          kycRequest.escalatedAt = new Date();
+          kycRequest.escalatedBy = currentUser.name;
+          kycRequest.escalationReason = escalationReason;
+          const escRemarks = `ESCALATED to Total Lead by ${currentUser.name}: ${escalationReason}`;
+          kycRequest.verificationRemarks = escRemarks;
+          kycRequest.approvalHistory = kycRequest.approvalHistory || [];
+          kycRequest.approvalHistory.push({
+            action: 'ESCALATED',
+            status: kycRequest.status,
+            actorId: currentUser.employeeId,
+            actorName: currentUser.name,
+            actorRole: currentUser.role,
+            actorDepartment: currentUser.department,
+            timestamp: new Date(),
+            remarks: escRemarks
+          });
+          kycRequest.lastUpdated = new Date();
+          await kycRequest.save();
+          updatedList.push(kycRequest.requestId);
+
+          await NotificationItem.create({
+            notificationId: generateId('NOTIF'),
+            targetRole: Role.OVERALL_LEAD,
+            targetDepartment: Department.OVERALL,
+            title: `KYC Escalated to Total Lead: ${kycRequest.requestId}`,
+            message: `${currentUser.name} escalated ${kycRequest.applicantName} (${kycRequest.applicantType}) to Total Lead. Reason: ${escalationReason}`,
+            type: 'KYC',
+            actionUrl: '/overall'
+          });
+        }
+      }
+
+      await logAudit(
+        req,
+        'KYC_BATCH_ESCALATED',
+        'KYC',
+        updatedList.join(', '),
+        `Batch escalated ${updatedList.length} KYC requests to Total Lead by ${currentUser.name}.`
+      );
+
+      return res.json({
+        success: true,
+        message: `Successfully escalated ${updatedList.length} request(s) to Total Lead with Urgent priority.`,
+        data: { escalatedCount: updatedList.length, requestIds: updatedList }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
   }
 
   /**
@@ -1493,19 +1569,21 @@ export class KycController {
       const { QueryTicket } = await import('../models/QueryTicket');
 
       const filter: any = {
-        currentDepartment: Department.KYC,
-        'transferHistory.0': { $exists: true }
+        currentDepartment: Department.KYC
       };
 
       if (status && status !== 'All') {
         if (status === 'Escalated') {
           filter.$or = [
             { isEscalated: true },
-            { verificationRemarks: /^ESCALATED/i },
-            { 'approvalHistory.action': 'ESCALATED', status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] } }
+            { priority: 'Urgent' }
           ];
-        } else if (status === 'In Progress' || status === KycStatus.IN_PROGRESS) {
-          filter.status = { $in: [KycStatus.IN_PROGRESS, KycStatus.ASSIGNED] };
+        } else if (status === 'Pending' || status === 'New' || status === 'Transferred to KYC') {
+          filter.status = { $in: ['New', 'Waiting for Response', 'Overdue', 'Unassigned', 'Transferred to KYC'] };
+        } else if (status === 'In Progress' || status === KycStatus.IN_PROGRESS || status === 'Assigned') {
+          filter.status = { $in: [KycStatus.IN_PROGRESS, KycStatus.ASSIGNED, 'In Progress', 'Assigned', 'Under KYC Verification', 'IN_PROGRESS'] };
+        } else if (status === 'Resolved' || status === 'Completed') {
+          filter.status = { $in: ['Resolved', 'RESOLVED', 'Completed'] };
         } else {
           filter.status = status;
         }
@@ -1531,15 +1609,14 @@ export class KycController {
           .lean(),
         QueryTicket.countDocuments(filter),
         QueryTicket.find({
-          currentDepartment: Department.KYC,
-          'transferHistory.0': { $exists: true }
-        }).select('status').lean()
+          currentDepartment: Department.KYC
+        }).select('status priority').lean()
       ]);
 
       const summary = {
         totalCount: allTransferred.length,
         pendingCount: allTransferred.filter((t: any) =>
-          ['New', 'Waiting for Response', 'Overdue', 'Unassigned'].includes(t.status)
+          ['New', 'Waiting for Response', 'Overdue', 'Unassigned', 'Transferred to KYC'].includes(t.status)
         ).length,
         inProgressCount: allTransferred.filter((t: any) =>
           ['In Progress', 'Assigned', 'Under KYC Verification', 'IN_PROGRESS'].includes(t.status)
@@ -1553,6 +1630,7 @@ export class KycController {
         success: true,
         data: tickets,
         total,
+        count: total,
         page: p,
         limit: l,
         totalPages: Math.ceil(total / l),

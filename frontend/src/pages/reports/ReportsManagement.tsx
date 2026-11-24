@@ -340,6 +340,10 @@ export const ReportsManagement: React.FC = () => {
                 <span>Vendor Subscriptions</span>
                 <span className="font-bold">₹{(payReport.metrics?.incomeBreakdown?.vendorSubscriptionIncome || 0).toLocaleString()}</span>
               </div>
+              <div className="flex justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40">
+                <span>Agent Onboarding & Tie-up Fees</span>
+                <span className="font-bold">₹{(payReport.metrics?.incomeBreakdown?.agentRecognizedIncome || 0).toLocaleString()}</span>
+              </div>
             </div>
 
             <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">

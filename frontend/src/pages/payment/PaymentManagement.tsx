@@ -89,6 +89,15 @@ export const PaymentManagement: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
 
   const [selectedTxn, setSelectedTxn] = useState<PaymentTransaction | null>(null);
+  const [selectedDetailApproval, setSelectedDetailApproval] = useState<FinancialApproval | null>(null);
+
+  const urlStatusParam = searchParams.get('status');
+
+  useEffect(() => {
+    if (urlStatusParam) {
+      setStatusFilter(urlStatusParam);
+    }
+  }, [urlStatusParam]);
   const [selectedLiability, setSelectedLiability] = useState<AgentDepositLiability | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<FinancialApproval | null>(null);
 
@@ -469,11 +478,12 @@ export const PaymentManagement: React.FC = () => {
   const completedPaymentsCount = kpis.statusSummary?.completedCount || transactions.filter(t => t.status === 'COMPLETED').length;
   const failedPaymentsCount = kpis.statusSummary?.failedCount || transactions.filter(t => t.status === 'FAILED').length;
 
+  const typeBreakdown = (kpis as any).typeBreakdown || {};
   const paymentDonutData = [
-    { name: 'Vendor Payout', value: transactions.filter(t => t.toParty?.type === 'Vendor').length || 18, color: '#1D4ED8' },
-    { name: 'Partner Earning', value: transactions.filter(t => ['Delivery Partner', 'Technician', 'Agent'].includes(t.toParty?.type)).length || 12, color: '#0EA5E9' },
-    { name: 'Orders / Income', value: transactions.filter(t => t.financialClassification === 'Income').length || 15, color: '#10B981' },
-    { name: 'Deposits / Refund', value: transactions.filter(t => t.status === 'REFUNDED' || t.transactionType?.includes('Deposit')).length || 6, color: '#8B5CF6' }
+    { name: 'Vendor Payout', value: typeBreakdown.vendorPayout ?? transactions.filter(t => t.toParty?.type === 'Vendor').length, color: '#1D4ED8' },
+    { name: 'Partner Earning', value: typeBreakdown.partnerEarning ?? transactions.filter(t => ['Delivery Partner', 'Technician', 'Agent'].includes(t.toParty?.type)).length, color: '#0EA5E9' },
+    { name: 'Orders / Income', value: typeBreakdown.ordersIncome ?? transactions.filter(t => t.financialClassification === 'Income').length, color: '#10B981' },
+    { name: 'Deposits / Liability', value: typeBreakdown.depositsLiability ?? transactions.filter(t => t.status === 'REFUNDED' || t.transactionType?.includes('Deposit')).length, color: '#8B5CF6' }
   ];
 
   const paymentFlowData = useMemo(() => {
@@ -504,7 +514,7 @@ export const PaymentManagement: React.FC = () => {
       label: 'Approve Payments (Checker)',
       icon: ShieldCheck,
       variant: 'primary' as const,
-      onClick: () => navigate('/payment/maker-checker-approvals')
+      onClick: () => navigate('/payment/maker-checker-approvals?status=Pending%20Checker%20Review')
     },
     {
       label: 'Financial & Payment Reports',
@@ -835,7 +845,7 @@ export const PaymentManagement: React.FC = () => {
               icon={Clock}
               color="yellow"
               subtitle="Pending checker review"
-              onClick={() => navigate('/payment/maker-checker-approvals')}
+              onClick={() => navigate('/payment/maker-checker-approvals?status=Pending%20Checker%20Review')}
               isActive={location.pathname.includes('maker-checker-approvals')}
             />
             <StatCard
@@ -1404,6 +1414,13 @@ export const PaymentManagement: React.FC = () => {
                             Execute Payout
                           </button>
                         )}
+                        <button
+                          onClick={() => setSelectedDetailApproval(apr)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold inline-flex items-center gap-1 text-[11px]"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Details</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1770,6 +1787,98 @@ export const PaymentManagement: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Approval Details Modal */}
+      <Modal
+        isOpen={!!selectedDetailApproval}
+        onClose={() => setSelectedDetailApproval(null)}
+        title={`Approval Case Audit: ${selectedDetailApproval?.approvalId}`}
+        subtitle={`${selectedDetailApproval?.recipientName} (${selectedDetailApproval?.recipientType})`}
+        maxWidth="lg"
+      >
+        {selectedDetailApproval && (
+          <div className="space-y-4 text-xs">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400">Transaction Type</span>
+                <div className="font-bold text-slate-900 dark:text-white mt-0.5">{selectedDetailApproval.transactionType}</div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Amount</span>
+                <div className="text-lg font-black text-emerald-600 dark:text-emerald-400">₹{selectedDetailApproval.amount.toLocaleString()}</div>
+              </div>
+              <div>
+                <Badge
+                  variant={
+                    selectedDetailApproval.status === 'Completed' || selectedDetailApproval.status === 'Approved'
+                      ? 'success'
+                      : selectedDetailApproval.status === 'Rejected'
+                      ? 'danger'
+                      : 'warning'
+                  }
+                >
+                  {selectedDetailApproval.status}
+                </Badge>
+              </div>
+            </div>
+
+            {selectedDetailApproval.bankDetails && (
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase text-[10px] tracking-wider">Destination Bank Account</div>
+                <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-300">
+                  <div>Account Holder: <span className="font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.bankDetails.accountHolder}</span></div>
+                  <div>Account No: <span className="font-mono font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.bankDetails.accountNumberMasked}</span></div>
+                  <div>Bank Name: <span className="font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.bankDetails.bankName}</span></div>
+                  <div>IFSC Code: <span className="font-mono font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.bankDetails.ifscCode}</span></div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 space-y-1">
+                <div className="font-bold text-blue-700 dark:text-blue-300 text-[10px] uppercase">Maker Initiation Details</div>
+                <div>Initiator: <span className="font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.makerName}</span></div>
+                <div>Role: <span className="text-slate-500">{selectedDetailApproval.makerRole}</span> (ID: {selectedDetailApproval.makerId})</div>
+                <div>Initiated At: <span className="text-slate-500">{new Date(selectedDetailApproval.initiatedAt).toLocaleString()}</span></div>
+                {selectedDetailApproval.makerNotes && (
+                  <div className="mt-1 text-[11px] italic text-slate-600 dark:text-slate-400">"{selectedDetailApproval.makerNotes}"</div>
+                )}
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900 space-y-1">
+                <div className="font-bold text-purple-700 dark:text-purple-300 text-[10px] uppercase">Checker Review Details</div>
+                {selectedDetailApproval.checkerName ? (
+                  <>
+                    <div>Reviewed By: <span className="font-semibold text-slate-900 dark:text-white">{selectedDetailApproval.checkerName}</span></div>
+                    <div>Review Date: <span className="text-slate-500">{selectedDetailApproval.reviewedAt ? new Date(selectedDetailApproval.reviewedAt).toLocaleString() : 'N/A'}</span></div>
+                    <div>Decision: <span className="font-bold text-emerald-600">{selectedDetailApproval.status}</span></div>
+                    {selectedDetailApproval.rejectionReason && (
+                      <div className="mt-1 text-[11px] text-rose-600 font-medium">Rejection Reason: {selectedDetailApproval.rejectionReason}</div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-slate-400 italic py-2">Awaiting Checker Review and Verification</div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-[10px] font-mono text-slate-400 flex justify-between">
+              <span>Idempotency Key: {selectedDetailApproval.idempotencyKey || 'N/A'}</span>
+              <span>Recipient ID: {selectedDetailApproval.recipientId}</span>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDetailApproval(null)}
+                className="px-4 py-2 rounded-xl font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Transaction Details Drawer / Modal */}

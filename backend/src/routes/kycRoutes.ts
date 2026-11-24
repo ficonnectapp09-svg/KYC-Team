@@ -50,7 +50,13 @@ router.post(
   KycController.verifyKycAction
 );
 
-// Escalate to KYC Team Lead
+// Escalate to KYC Team Lead / Total Lead
+router.post(
+  '/requests/escalate-batch',
+  requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.KYC_EMPLOYEE]),
+  KycController.escalateBatchRequests
+);
+
 router.post(
   '/requests/:id/escalate',
   requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.KYC_EMPLOYEE]),
