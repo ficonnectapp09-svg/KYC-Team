@@ -9,6 +9,9 @@ const router = Router();
 router.use(authenticateJwt);
 
 router.get('/summary', AttendanceController.getAttendanceSummary);
+router.get('/today-status', AttendanceController.getTodayStatus);
+router.post('/check-in', AttendanceController.checkIn);
+router.post('/check-out', AttendanceController.checkOut);
 router.get('/', AttendanceController.listAttendance);
 router.post('/mark', AttendanceController.markAttendance);
 

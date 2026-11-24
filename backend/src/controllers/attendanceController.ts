@@ -150,6 +150,22 @@ export class AttendanceController {
         return res.status(404).json({ success: false, message: 'Attendance/leave record not found.' });
       }
 
+      if (record.employeeId === currentUser.employeeId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Self-approval of leave is prohibited. Lead leave requests must be approved by the Overall Team Lead.'
+        });
+      }
+
+      const targetEmp = await Employee.findOne({ employeeId: record.employeeId });
+      const isLeadApplicant = targetEmp && (targetEmp.role.endsWith('_lead') || targetEmp.role === Role.OVERALL_LEAD);
+      if (isLeadApplicant && currentUser.role !== Role.OVERALL_LEAD) {
+        return res.status(403).json({
+          success: false,
+          message: 'Leave requests submitted by Team Leads must be reviewed and approved by the Overall Team Lead.'
+        });
+      }
+
       if (currentUser.role !== Role.OVERALL_LEAD && record.department !== currentUser.department) {
         return res.status(403).json({
           success: false,
@@ -225,6 +241,114 @@ export class AttendanceController {
           pendingLeaveApprovals,
           byDepartment
         }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async checkIn(req: Request, res: Response): Promise<any> {
+    try {
+      const currentUser = req.user!;
+      const todayKey = getTodayDateKey();
+
+      const employee = await Employee.findOne({ employeeId: currentUser.employeeId });
+      if (!employee) {
+        return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+
+      let record = await AttendanceRecord.findOne({ employeeId: currentUser.employeeId, dateKey: todayKey });
+      if (record) {
+        if (record.checkInTime) {
+          return res.status(400).json({
+            success: false,
+            message: `Already checked in today at ${new Date(record.checkInTime).toLocaleTimeString()}.`,
+            data: record
+          });
+        }
+        record.checkInTime = new Date();
+        record.status = 'Present';
+        await record.save();
+      } else {
+        record = await AttendanceRecord.create({
+          attendanceId: generateId('ATT'),
+          employeeId: employee.employeeId,
+          employeeName: employee.name,
+          department: employee.department,
+          dateKey: todayKey,
+          date: new Date(`${todayKey}T09:00:00.000Z`),
+          status: 'Present',
+          checkInTime: new Date(),
+          workHours: 0,
+          leaveApprovalStatus: 'N/A',
+          remarks: 'Checked in via operational portal'
+        });
+      }
+
+      await logAudit(
+        req,
+        'ATTENDANCE_CHECK_IN',
+        'STAFF',
+        record.attendanceId,
+        `${employee.name} checked in at ${new Date().toLocaleTimeString()} (${todayKey}).`
+      );
+
+      return res.json({
+        success: true,
+        message: 'Check-in successful. Your work shift has started.',
+        data: record
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async checkOut(req: Request, res: Response): Promise<any> {
+    try {
+      const currentUser = req.user!;
+      const todayKey = getTodayDateKey();
+
+      const record = await AttendanceRecord.findOne({ employeeId: currentUser.employeeId, dateKey: todayKey });
+      if (!record || !record.checkInTime) {
+        return res.status(400).json({
+          success: false,
+          message: 'No active check-in found for today. Please check in first.'
+        });
+      }
+
+      const now = new Date();
+      record.checkOutTime = now;
+      const durationHours = (now.getTime() - new Date(record.checkInTime).getTime()) / (1000 * 60 * 60);
+      record.workHours = Math.round(durationHours * 10) / 10;
+      await record.save();
+
+      await logAudit(
+        req,
+        'ATTENDANCE_CHECK_OUT',
+        'STAFF',
+        record.attendanceId,
+        `${record.employeeName} checked out at ${now.toLocaleTimeString()} (${record.workHours} hours logged).`
+      );
+
+      return res.json({
+        success: true,
+        message: `Check-out successful. Total logged time: ${record.workHours} hours.`,
+        data: record
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async getTodayStatus(req: Request, res: Response): Promise<any> {
+    try {
+      const currentUser = req.user!;
+      const todayKey = getTodayDateKey();
+
+      const record = await AttendanceRecord.findOne({ employeeId: currentUser.employeeId, dateKey: todayKey }).lean();
+      return res.json({
+        success: true,
+        data: record || null
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

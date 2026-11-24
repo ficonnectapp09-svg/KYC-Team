@@ -10,7 +10,8 @@ import {
   Clock,
   Layers,
   TrendingUp,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -89,30 +90,45 @@ export const ReportsManagement: React.FC = () => {
     loadReports();
   }, [user]);
 
+  const [exportFeedback, setExportFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const handleExportCsv = async () => {
     try {
       setExporting(true);
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/reports/export-csv?module=${activeTab.toLowerCase()}`, {
+      setExportFeedback(null);
+      const token = localStorage.getItem('connect_backoffice_token') || localStorage.getItem('token');
+      const moduleParam = activeTab.toLowerCase();
+      const res = await fetch(`/api/reports/export-csv?module=${encodeURIComponent(moduleParam)}`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : ''
         }
       });
-      if (!res.ok) throw new Error('Failed to download CSV export');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || `Failed to download CSV export (${res.status})`);
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute(
         'download',
-        `connect_backoffice_${activeTab.toLowerCase()}_records_${new Date().toISOString().slice(0, 10)}.csv`
+        `connect_backoffice_${moduleParam}_records_${new Date().toISOString().slice(0, 10)}.csv`
       );
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      setExportFeedback({
+        type: 'success',
+        message: `Row-level CSV export for ${activeTab} downloaded successfully.`
+      });
+      setTimeout(() => setExportFeedback(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Error exporting CSV report.');
+      setExportFeedback({
+        type: 'error',
+        message: err.message || 'Error exporting CSV report.'
+      });
     } finally {
       setExporting(false);
     }
@@ -146,6 +162,31 @@ export const ReportsManagement: React.FC = () => {
       </div>
 
       <ErrorBanner message={loadError} onRetry={loadReports} />
+
+      {exportFeedback && (
+        <div
+          className={`flex items-center justify-between p-4 rounded-xl text-xs font-semibold border ${
+            exportFeedback.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {exportFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{exportFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setExportFeedback(null)}
+            className="text-xs font-bold underline hover:opacity-80 ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto">

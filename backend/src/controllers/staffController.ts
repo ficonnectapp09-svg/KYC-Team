@@ -519,5 +519,113 @@ export class StaffController {
       return res.status(500).json({ success: false, message: error.message });
     }
   }
+
+  /**
+   * Self-service Profile Update (Phone, Address, Work Location)
+   */
+  static async updateSelfProfile(req: Request, res: Response): Promise<any> {
+    try {
+      const { id } = req.params;
+      const { phone, address, workLocation } = req.body;
+      const currentUser = req.user!;
+
+      const employee = await Employee.findOne(buildIdFilter('employeeId', id));
+      if (!employee) {
+        return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+
+      if (
+        currentUser.role !== Role.OVERALL_LEAD &&
+        employee.employeeId !== currentUser.employeeId &&
+        employee._id.toString() !== currentUser.id
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only update your own employee contact profile.'
+        });
+      }
+
+      if (phone) employee.phone = phone.trim();
+      if (address !== undefined) employee.address = address.trim();
+      if (workLocation) employee.workLocation = workLocation.trim();
+      employee.updatedAt = new Date();
+      await employee.save();
+
+      await logAudit(
+        req,
+        'STAFF_SELF_PROFILE_UPDATED',
+        'STAFF',
+        employee.employeeId,
+        `Contact details updated by ${currentUser.name} for ${employee.name}.`
+      );
+
+      return res.json({
+        success: true,
+        message: 'Profile details updated successfully.',
+        data: employee
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * Self-service Bank Details Update
+   */
+  static async updateSelfBankDetails(req: Request, res: Response): Promise<any> {
+    try {
+      const { id } = req.params;
+      const { bankName, accountHolder, accountNumber, ifscCode } = req.body;
+      const currentUser = req.user!;
+
+      const employee = await Employee.findOne(buildIdFilter('employeeId', id));
+      if (!employee) {
+        return res.status(404).json({ success: false, message: 'Employee not found.' });
+      }
+
+      if (
+        currentUser.role !== Role.OVERALL_LEAD &&
+        employee.employeeId !== currentUser.employeeId &&
+        employee._id.toString() !== currentUser.id
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only update your own bank disbursement details.'
+        });
+      }
+
+      if (!accountNumber || !ifscCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'Account number and IFSC code are mandatory.'
+        });
+      }
+
+      employee.bankDetails = {
+        bankName: bankName?.trim() || employee.bankDetails?.bankName || 'Connect Partner Bank',
+        accountHolder: accountHolder?.trim() || employee.name,
+        accountNumber: accountNumber.trim(),
+        ifscCode: ifscCode.trim().toUpperCase()
+      };
+      employee.updatedAt = new Date();
+      await employee.save();
+
+      await logAudit(
+        req,
+        'STAFF_BANK_DETAILS_UPDATED',
+        'STAFF',
+        employee.employeeId,
+        `Bank account details updated by ${currentUser.name} for ${employee.name}.`
+      );
+
+      return res.json({
+        success: true,
+        message: 'Bank details updated successfully.',
+        data: employee
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
 }
 

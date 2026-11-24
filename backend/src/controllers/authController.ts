@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { Employee } from '../models/Employee';
-import { comparePassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/security';
+import { comparePassword, hashPassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/security';
 import { logAudit } from '../middleware/auditLogger';
 
 export class AuthController {
@@ -150,6 +150,63 @@ export class AuthController {
       return res.json({
         success: true,
         data: { accessToken: newAccessToken }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async changePassword(req: Request, res: Response): Promise<any> {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const currentUser = req.user!;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'Both current password and new password are required.'
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'New password must be at least 6 characters long.'
+        });
+      }
+
+      const employee = await Employee.findById(currentUser.id);
+      if (!employee) {
+        return res.status(404).json({ success: false, message: 'Employee account not found.' });
+      }
+
+      if (!employee.password) {
+        return res.status(400).json({ success: false, message: 'Account password not configured.' });
+      }
+
+      const isMatch = await comparePassword(currentPassword, employee.password);
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Current password does not match our records.'
+        });
+      }
+
+      employee.password = await hashPassword(newPassword);
+      employee.updatedAt = new Date();
+      await employee.save();
+
+      await logAudit(
+        req,
+        'STAFF_PASSWORD_CHANGED',
+        'AUTH',
+        employee.employeeId,
+        `Password successfully updated by ${currentUser.name} (${employee.employeeId}).`
+      );
+
+      return res.json({
+        success: true,
+        message: 'Password changed successfully.'
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

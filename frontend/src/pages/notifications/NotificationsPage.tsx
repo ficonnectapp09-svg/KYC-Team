@@ -95,13 +95,15 @@ export const NotificationsPage: React.FC = () => {
             ))}
           </div>
 
-          <button
-            onClick={handleMarkAllRead}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
-          >
-            <CheckCheck className="w-4 h-4" />
-            Mark All Read
-          </button>
+          {notifications.some(n => !n.isRead) && (
+            <button
+              onClick={handleMarkAllRead}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
+            >
+              <CheckCheck className="w-4 h-4" />
+              Mark All Read
+            </button>
+          )}
 
           <button
             onClick={loadNotifications}
@@ -175,9 +177,14 @@ export const NotificationsPage: React.FC = () => {
                   <button
                     onClick={() => {
                       if (!n.isRead) handleMarkRead(n.notificationId);
-                      navigate(n.actionUrl!.startsWith('/payments') ? '/payment' : n.actionUrl!);
+                      let target = n.actionUrl!.startsWith('/payments') ? '/payment' : n.actionUrl!;
+                      if (n.targetEntityId && !target.includes('openId') && !target.includes('search')) {
+                        const delim = target.includes('?') ? '&' : '?';
+                        target = `${target}${delim}search=${encodeURIComponent(n.targetEntityId)}&openId=${encodeURIComponent(n.targetEntityId)}`;
+                      }
+                      navigate(target);
                     }}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-indigo-600 text-white text-xs font-semibold hover:opacity-90"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-indigo-600 text-white text-xs font-semibold hover:opacity-90 transition-opacity"
                   >
                     Open
                     <ArrowRight className="w-3.5 h-3.5" />

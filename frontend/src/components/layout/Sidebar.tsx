@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Bell,
   Settings,
-  UserCheck
+  UserCheck,
+  LogOut
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiFetch } from '../../services/api';
@@ -42,9 +43,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse
 }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const role = user?.role || 'overall_lead';
 
   const isOverall = role === 'overall_lead';
@@ -452,7 +454,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
               {user?.employeeId && (
                 <NavLink
-                  to={`/staff/all?search=${encodeURIComponent(user.employeeId)}&openId=${encodeURIComponent(user.employeeId)}`}
+                  to={`/staff/all?openId=${encodeURIComponent(user.employeeId)}`}
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors"
                   title="View My Staff Profile"
                 >
@@ -471,21 +473,69 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 {user?.department}
               </span>
-              {user?.employeeId && (
-                <span className="text-[10px] font-mono text-slate-400">
-                  {user.employeeId}
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition-colors"
+                title="Log Out of Backoffice"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
         ) : (
-          <div className="p-2 m-2 rounded-xl bg-[#0F1E36] flex items-center justify-center shrink-0">
+          <div className="p-2 m-2 rounded-xl bg-[#0F1E36] flex flex-col items-center gap-2 shrink-0">
             <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center" title={`${user?.name || 'User'} (${user?.role || 'Staff'})`}>
               {user?.name?.charAt(0) || 'U'}
             </div>
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         )}
       </aside>
+
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 shrink-0">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm">Confirm Sign Out</h4>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">Are you sure you want to end your backoffice session?</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-3.5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-sm"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -342,12 +342,24 @@ export const QueriesManagement: React.FC = () => {
     ? Math.max(0, Math.min(100, Math.round(((totalQueriesCount - (kpis.overdueQueries || 0)) / totalQueriesCount) * 100)))
     : 94;
 
+  const customerCount = categoryCounts['CUSTOMER'] ?? queries.filter(q => q.userType === 'Customer').length;
+  const vendorCount = categoryCounts['VENDOR'] ?? queries.filter(q => q.userType === 'Vendor').length;
+  const deliveryCount = categoryCounts['DELIVERY_PARTNER'] ?? queries.filter(q => q.userType === 'Delivery Partner').length;
+  const technicianCount = categoryCounts['TECHNICIAN'] ?? queries.filter(q => q.userType === 'Technician').length;
+  const internalCount =
+    (categoryCounts['KYC_TEAM'] || 0) +
+    (categoryCounts['PAYMENT_TEAM'] || 0) +
+    (categoryCounts['QUERIES_INTERNAL'] || 0) +
+    (categoryCounts['AGENT'] || 0) +
+    (categoryCounts['MANAGER'] || 0) ||
+    queries.filter(q => !['Customer', 'Vendor', 'Delivery Partner', 'Technician'].includes(q.userType)).length;
+
   const querySourceData = [
-    { name: 'Customer', value: queries.filter(q => q.userType === 'Customer').length || 24, color: '#1D4ED8' },
-    { name: 'Vendor', value: queries.filter(q => q.userType === 'Vendor').length || 14, color: '#8B5CF6' },
-    { name: 'Delivery Partner', value: queries.filter(q => q.userType === 'Delivery Partner').length || 8, color: '#F59E0B' },
-    { name: 'Technician', value: queries.filter(q => q.userType === 'Technician').length || 6, color: '#10B981' },
-    { name: 'Internal / Others', value: queries.filter(q => !['Customer', 'Vendor', 'Delivery Partner', 'Technician'].includes(q.userType)).length || 4, color: '#64748B' }
+    { name: 'Customer', value: customerCount, color: '#1D4ED8' },
+    { name: 'Vendor', value: vendorCount, color: '#8B5CF6' },
+    { name: 'Delivery Partner', value: deliveryCount, color: '#F59E0B' },
+    { name: 'Technician', value: technicianCount, color: '#10B981' },
+    { name: 'Internal / Others', value: internalCount, color: '#64748B' }
   ];
 
   const queriesLeadActions = [

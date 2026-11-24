@@ -835,8 +835,8 @@ export const PaymentManagement: React.FC = () => {
               icon={Clock}
               color="yellow"
               subtitle="Pending checker review"
-              onClick={() => setStatusFilter(statusFilter === 'PENDING' || statusFilter === 'Pending' ? 'All' : 'PENDING')}
-              isActive={statusFilter === 'PENDING' || statusFilter === 'Pending'}
+              onClick={() => navigate('/payment/maker-checker-approvals')}
+              isActive={location.pathname.includes('maker-checker-approvals')}
             />
             <StatCard
               title="In Progress"

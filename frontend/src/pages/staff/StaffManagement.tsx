@@ -13,7 +13,14 @@ import {
   Eye,
   Edit3,
   CalendarCheck2,
-  UploadCloud
+  UploadCloud,
+  Lock,
+  Key,
+  Clock,
+  Play,
+  Square,
+  AlertTriangle,
+  CreditCard
 } from 'lucide-react';
 import { apiFetch, uploadMediaFile } from '../../services/api';
 import { Employee } from '../../types';
@@ -47,6 +54,7 @@ export const StaffManagement: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState<TabSummaryCounts>({});
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const openId = searchParams.get('openId');
@@ -60,6 +68,10 @@ export const StaffManagement: React.FC = () => {
       );
       if (match) {
         openProfileOverview(match);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('openId');
+        newParams.delete('search');
+        navigate({ search: newParams.toString() }, { replace: true });
       }
     }
   }, [searchParams, employees]);
@@ -90,6 +102,24 @@ export const StaffManagement: React.FC = () => {
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [empOverview, setEmpOverview] = useState<any>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'attendance' | 'performance' | 'salary'>('info');
+
+  // Self-service contact edit state
+  const [showEditContactModal, setShowEditContactModal] = useState(false);
+  const [contactForm, setContactForm] = useState({ phone: '', address: '', workLocation: '' });
+
+  // Self-service bank details edit state
+  const [showEditBankModal, setShowEditBankModal] = useState(false);
+  const [bankForm, setBankForm] = useState({ bankName: '', accountHolder: '', accountNumber: '', ifscCode: '' });
+
+  // Change password modal state
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Live Shift Attendance State
+  const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [shiftElapsedSeconds, setShiftElapsedSeconds] = useState(0);
+
   const [attForm, setAttForm] = useState({
     employeeId: user?.employeeId || '',
     status: 'Present',
@@ -151,14 +181,151 @@ export const StaffManagement: React.FC = () => {
 
   const loadAttendance = async () => {
     try {
-      const [listRes, sumRes] = await Promise.all([
+      const [listRes, sumRes, todayRes] = await Promise.all([
         apiFetch<any[]>('/attendance'),
-        apiFetch<any>('/attendance/summary')
+        apiFetch<any>('/attendance/summary'),
+        apiFetch<any>('/attendance/today-status')
       ]);
       if (listRes.success) setAttendanceRecords(listRes.data || []);
       if (sumRes.success) setAttSummary(sumRes.data);
+      if (todayRes.success) {
+        setTodayAttendance(todayRes.data);
+        if (todayRes.data?.checkInTime && !todayRes.data?.checkOutTime) {
+          const elapsed = Math.floor((Date.now() - new Date(todayRes.data.checkInTime).getTime()) / 1000);
+          setShiftElapsedSeconds(Math.max(0, elapsed));
+        }
+      }
     } catch (err) {
       console.error('Failed to load attendance:', err);
+    }
+  };
+
+  useEffect(() => {
+    let timer: any = null;
+    if (todayAttendance?.checkInTime && !todayAttendance?.checkOutTime) {
+      timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - new Date(todayAttendance.checkInTime).getTime()) / 1000);
+        setShiftElapsedSeconds(Math.max(0, elapsed));
+      }, 1000);
+    }
+    return () => timer && clearInterval(timer);
+  }, [todayAttendance]);
+
+  const handleCheckIn = async () => {
+    try {
+      setSubmitting(true);
+      const res = await apiFetch<any>('/attendance/check-in', { method: 'POST' });
+      if (res.success) {
+        setTodayAttendance(res.data);
+        setFeedbackMsg('Checked in successfully. Live shift timer activated.');
+        await loadAttendance();
+      } else {
+        setFeedbackMsg(res.message || 'Check-in failed.');
+      }
+    } catch (err: any) {
+      setFeedbackMsg(err.message || 'Check-in error.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      setSubmitting(true);
+      const res = await apiFetch<any>('/attendance/check-out', { method: 'POST' });
+      if (res.success) {
+        setTodayAttendance(res.data);
+        setFeedbackMsg(`Checked out successfully. Shift logged: ${res.data?.workHours || 0} hrs.`);
+        await loadAttendance();
+      } else {
+        setFeedbackMsg(res.message || 'Check-out failed.');
+      }
+    } catch (err: any) {
+      setFeedbackMsg(err.message || 'Check-out error.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmp) return;
+    try {
+      setSubmitting(true);
+      const res = await apiFetch(`/staff/${selectedEmp.employeeId}/self-profile`, {
+        method: 'PUT',
+        body: JSON.stringify(contactForm)
+      });
+      if (res.success && res.data) {
+        setSelectedEmp(res.data);
+        setShowEditContactModal(false);
+        setFeedbackMsg('Contact and workplace details updated successfully.');
+        await loadEmployees();
+      } else {
+        setFeedbackMsg(res.message || 'Failed to update contact info.');
+      }
+    } catch (err: any) {
+      setFeedbackMsg(err.message || 'Failed to update contact info.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveBank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmp) return;
+    try {
+      setSubmitting(true);
+      const res = await apiFetch(`/staff/${selectedEmp.employeeId}/self-bank`, {
+        method: 'PUT',
+        body: JSON.stringify(bankForm)
+      });
+      if (res.success && res.data) {
+        setSelectedEmp(res.data);
+        setShowEditBankModal(false);
+        setFeedbackMsg('Disbursement and payroll bank details updated successfully.');
+        await loadEmployees();
+      } else {
+        setFeedbackMsg(res.message || 'Failed to update bank details.');
+      }
+    } catch (err: any) {
+      setFeedbackMsg(err.message || 'Failed to update bank details.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters.');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const res = await apiFetch('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword
+        })
+      });
+      if (res.success) {
+        setShowChangePasswordModal(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setFeedbackMsg('Account password changed successfully.');
+      } else {
+        setPasswordError(res.message || 'Password update failed.');
+      }
+    } catch (err: any) {
+      setPasswordError(err.message || 'Password update error.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -356,9 +523,101 @@ export const StaffManagement: React.FC = () => {
           )}
         </div>
       </div>
+      {feedbackMsg && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
+          <div className="flex items-center gap-2 font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{feedbackMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedbackMsg(null)}
+            className="text-xs font-bold underline hover:opacity-80 ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {activeTab === 'attendance' ? (
         <div className="space-y-6">
+          {/* Live Operational Shift Tracker Card */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-slate-950 dark:via-indigo-950 text-white border border-indigo-900/60 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className={`p-3.5 rounded-2xl ${todayAttendance?.checkInTime && !todayAttendance?.checkOutTime ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-sm tracking-tight text-white">Daily Operational Shift Tracker</h3>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    todayAttendance?.checkOutTime
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      : todayAttendance?.checkInTime
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {todayAttendance?.checkOutTime
+                      ? 'Shift Completed'
+                      : todayAttendance?.checkInTime
+                      ? 'Shift In Progress'
+                      : 'Not Checked In'}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-300 mt-1 flex items-center gap-3 flex-wrap">
+                  <span>Shift Date: <strong>{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</strong></span>
+                  {todayAttendance?.checkInTime && (
+                    <span>Check-in: <strong className="text-emerald-400">{new Date(todayAttendance.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                  )}
+                  {todayAttendance?.checkOutTime && (
+                    <span>Check-out: <strong className="text-blue-400">{new Date(todayAttendance.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                  )}
+                  {todayAttendance?.workHours !== undefined && todayAttendance.workHours > 0 && (
+                    <span>Logged Hours: <strong className="text-amber-300">{todayAttendance.workHours}h</strong></span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              {todayAttendance?.checkInTime && !todayAttendance?.checkOutTime && (
+                <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-right">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Shift Elapsed</div>
+                  <div className="font-mono text-sm font-bold text-emerald-400">
+                    {Math.floor(shiftElapsedSeconds / 3600).toString().padStart(2, '0')}:
+                    {Math.floor((shiftElapsedSeconds % 3600) / 60).toString().padStart(2, '0')}:
+                    {(shiftElapsedSeconds % 60).toString().padStart(2, '0')}
+                  </div>
+                </div>
+              )}
+
+              {!todayAttendance?.checkInTime ? (
+                <button
+                  type="button"
+                  onClick={handleCheckIn}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{submitting ? 'Checking In...' : 'Start Shift (Check-In)'}</span>
+                </button>
+              ) : !todayAttendance?.checkOutTime ? (
+                <button
+                  type="button"
+                  onClick={handleCheckOut}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                  <span>{submitting ? 'Ending Shift...' : 'End Shift (Check-Out)'}</span>
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700">
+                  Shift Closed for Today
+                </span>
+              )}
+            </div>
+          </div>
           {attSummary && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
@@ -503,21 +762,49 @@ export const StaffManagement: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3 px-4 text-right space-x-1">
-                      {isLead && rec.leaveApprovalStatus === 'Pending' && (
-                        <>
-                          <button
-                            onClick={() => handleReviewLeave(rec.attendanceId, 'Approved')}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-semibold"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => handleReviewLeave(rec.attendanceId, 'Rejected')}
-                            className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-semibold"
-                          >
-                            Reject
-                          </button>
-                        </>
+                      {rec.status === 'On Leave' ? (
+                        rec.leaveApprovalStatus === 'Pending' ? (
+                          rec.employeeId === user?.employeeId ? (
+                            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-md border border-amber-200 dark:border-amber-800">
+                              Pending Review (Self)
+                            </span>
+                          ) : isLead ? (
+                            rec.designation?.toLowerCase().includes('lead') && !isOverall ? (
+                              <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-1 rounded-md border border-purple-200 dark:border-purple-800">
+                                Pending Overall Lead
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewLeave(rec.attendanceId, 'Approved')}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewLeave(rec.attendanceId, 'Rejected')}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Pending Review</span>
+                          )
+                        ) : rec.leaveApprovalStatus === 'Approved' ? (
+                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-800">
+                            Approved by {rec.reviewedBy?.name || 'Lead'}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-1 rounded-md border border-rose-200 dark:border-rose-800">
+                            Rejected by {rec.reviewedBy?.name || 'Lead'}
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">Auto-Recorded Shift</span>
                       )}
                     </td>
                   </tr>
@@ -545,7 +832,11 @@ export const StaffManagement: React.FC = () => {
             onSearchChange={setSearch}
             searchPlaceholder="Search Employee ID, name, email, phone, designation..."
             statusFilter={statusFilter}
-            onStatusChange={setStatusFilter}
+            onStatusChange={(val) => {
+              setStatusFilter(val);
+              setSearch('');
+              setPage(1);
+            }}
             statusOptions={[
               { value: 'All', label: 'All Statuses' },
               { value: 'active', label: 'Active' },
@@ -1104,8 +1395,27 @@ export const StaffManagement: React.FC = () => {
               <div className="space-y-4">
                 {/* Contact & Location */}
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Contact & Workplace Details
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Contact & Workplace Details
+                    </div>
+                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContactForm({
+                            phone: selectedEmp.phone || '',
+                            address: selectedEmp.address || '',
+                            workLocation: selectedEmp.workLocation || ''
+                          });
+                          setShowEditContactModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>Edit Details</span>
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
@@ -1182,8 +1492,28 @@ export const StaffManagement: React.FC = () => {
 
                 {/* Bank & Payroll Info */}
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Disbursement & Payroll Bank Details
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Disbursement & Payroll Bank Details
+                    </div>
+                    {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBankForm({
+                            bankName: selectedEmp.bankDetails?.bankName || '',
+                            accountHolder: selectedEmp.bankDetails?.accountHolder || selectedEmp.name,
+                            accountNumber: selectedEmp.bankDetails?.accountNumber || '',
+                            ifscCode: selectedEmp.bankDetails?.ifscCode || ''
+                          });
+                          setShowEditBankModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition-colors"
+                      >
+                        <CreditCard className="w-3 h-3" />
+                        <span>Edit Bank Info</span>
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
@@ -1206,17 +1536,30 @@ export const StaffManagement: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                {isLead && (
-                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                      Account Controls (Preserves Audit History)
-                    </span>
-                    {selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id ? (
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    Account Controls (Preserves Audit History)
+                  </span>
+                  {(selectedEmp.employeeId === user?.employeeId || selectedEmp.email === user?.email || (selectedEmp as any)._id === (user as any).id) ? (
+                    <div className="flex items-center gap-3">
                       <span className="text-xs text-slate-400 italic">
-                        Self-modification of account status or suspension is restricted to safeguard audit integrity.
+                        Self-modification of status is locked to safeguard audit integrity.
                       </span>
-                    ) : (
-                      <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                          setPasswordError(null);
+                          setShowChangePasswordModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-colors"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>Change Password</span>
+                      </button>
+                    </div>
+                  ) : isLead ? (
+                    <div className="flex gap-2">
                         {selectedEmp.status !== 'active' && (
                           <button
                             onClick={() => handleStatusChange(selectedEmp.employeeId, 'active')}
@@ -1242,9 +1585,8 @@ export const StaffManagement: React.FC = () => {
                           </button>
                         )}
                       </div>
-                    )}
-                  </div>
-                )}
+                    ) : null}
+                </div>
               </div>
             )}
 
@@ -1324,6 +1666,237 @@ export const StaffManagement: React.FC = () => {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Self-Service Contact Details Modal */}
+      <Modal
+        isOpen={showEditContactModal}
+        onClose={() => setShowEditContactModal(false)}
+        title="Update Contact & Workplace Information"
+        subtitle={selectedEmp?.employeeId}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveContact} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Mobile Phone Number *
+            </label>
+            <input
+              type="text"
+              required
+              value={contactForm.phone}
+              onChange={e => setContactForm({ ...contactForm, phone: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Work Location *
+            </label>
+            <input
+              type="text"
+              required
+              value={contactForm.workLocation}
+              onChange={e => setContactForm({ ...contactForm, workLocation: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Residential Address
+            </label>
+            <textarea
+              rows={3}
+              value={contactForm.address}
+              onChange={e => setContactForm({ ...contactForm, address: e.target.value })}
+              placeholder="Enter current residential address..."
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setShowEditContactModal(false)}
+              className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 shadow-sm"
+            >
+              {submitting ? 'Saving...' : 'Save Contact Details'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Self-Service Bank Details Modal */}
+      <Modal
+        isOpen={showEditBankModal}
+        onClose={() => setShowEditBankModal(false)}
+        title="Update Disbursement & Payroll Bank Details"
+        subtitle={selectedEmp?.employeeId}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveBank} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Bank Name *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. HDFC Bank, State Bank of India"
+              value={bankForm.bankName}
+              onChange={e => setBankForm({ ...bankForm, bankName: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Account Holder Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={bankForm.accountHolder}
+              onChange={e => setBankForm({ ...bankForm, accountHolder: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Account Number *
+            </label>
+            <input
+              type="text"
+              required
+              autoComplete="off"
+              value={bankForm.accountNumber}
+              onChange={e => setBankForm({ ...bankForm, accountNumber: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              IFSC Code *
+            </label>
+            <input
+              type="text"
+              required
+              autoComplete="off"
+              value={bankForm.ifscCode}
+              onChange={e => setBankForm({ ...bankForm, ifscCode: e.target.value.toUpperCase() })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs uppercase"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setShowEditBankModal(false)}
+              className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 shadow-sm"
+            >
+              {submitting ? 'Saving...' : 'Save Bank Details'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        isOpen={showChangePasswordModal}
+        onClose={() => {
+          setShowChangePasswordModal(false);
+          setPasswordError(null);
+        }}
+        title="Change Account Password"
+        subtitle="Secure Password Modification"
+        maxWidth="md"
+      >
+        <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
+          {passwordError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300">
+              {passwordError}
+            </div>
+          )}
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Current Password *
+            </label>
+            <input
+              type="password"
+              required
+              value={passwordForm.currentPassword}
+              onChange={e => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              New Password *
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={passwordForm.newPassword}
+              onChange={e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Confirm New Password *
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={passwordForm.confirmPassword}
+              onChange={e => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                setShowChangePasswordModal(false);
+                setPasswordError(null);
+              }}
+              className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 shadow-sm"
+            >
+              {submitting ? 'Updating...' : 'Update Password'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

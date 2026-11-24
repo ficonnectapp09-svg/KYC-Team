@@ -365,6 +365,8 @@ export interface NotificationItem {
   type: string;
   isRead: boolean;
   actionUrl?: string;
+  targetEntityId?: string;
+  targetId?: string;
   createdAt: string;
 }
 

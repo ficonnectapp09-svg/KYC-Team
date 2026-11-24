@@ -1552,7 +1552,34 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
               {/* =================================================================== */}
               {/* SECTION 8: KYC Action Controls                                      */}
               {/* =================================================================== */}
-              {liveReq.status !== 'Approved' && (
+              {liveReq.status === 'Approved' ? (
+                <div className="pt-3 border-t border-slate-800 space-y-2">
+                  <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/80 text-emerald-300 text-xs">
+                    <div className="flex items-center gap-2 font-bold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>KYC Verification Approved</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      Verified by <strong className="text-white">{liveReq.reviewedBy || liveReq.approvedBy?.name || 'Officer'}</strong> on {liveReq.reviewedAt ? new Date(liveReq.reviewedAt).toLocaleDateString() : 'Recorded'}.
+                    </div>
+                  </div>
+                </div>
+              ) : liveReq.status === 'Rejected' ? (
+                <div className="pt-3 border-t border-slate-800 space-y-2">
+                  <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-xs">
+                    <div className="flex items-center gap-2 font-bold">
+                      <XCircle className="w-4 h-4 text-rose-400" />
+                      <span>KYC Application Rejected</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      Reason: <strong className="text-rose-200">{liveReq.verificationRemarks || 'Non-compliant documents.'}</strong>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Decision sealed in audit ledger. Modifications are locked.
+                    </div>
+                  </div>
+                </div>
+              ) : (
                 <div className="pt-3 border-t border-slate-800 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
@@ -1702,9 +1729,22 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           onChange={e => setSelectedDocForReupload(e.target.value)}
                           className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
-                          {documents.map((d, i) => (
-                            <option key={i} value={d.docType}>
-                              {d.docType} ({d.docName})
+                          {Array.from(
+                            new Set([
+                              ...documents.map(d => d.docType),
+                              'PAN Card',
+                              'Aadhaar Front',
+                              'Aadhaar Back',
+                              'Address Proof',
+                              'Bank Account Statement / Cancelled Cheque',
+                              'Business Registration Certificate',
+                              'Identity Proof',
+                              'Driving License',
+                              'Vehicle RC'
+                            ])
+                          ).map((dt, i) => (
+                            <option key={i} value={dt}>
+                              {dt}
                             </option>
                           ))}
                         </select>
@@ -1745,23 +1785,23 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
 
                   {/* REJECT REQUEST FORM */}
                   {actionMode === 'REJECT' && (
-                    <div className="p-3.5 rounded-2xl bg-rose-950/40 border border-rose-800/80 space-y-3">
+                    <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800/80 space-y-3 shadow-sm">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-rose-300 text-xs flex items-center gap-1.5">
-                          <XCircle className="w-4 h-4" />
+                        <span className="font-bold text-rose-900 dark:text-rose-200 text-xs flex items-center gap-1.5">
+                          <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                           Reject KYC Application
                         </span>
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="text-[11px] text-slate-400 hover:text-white"
+                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
                         >
                           Cancel
                         </button>
                       </div>
 
                       <div>
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        <label className="block text-[10px] uppercase font-bold text-rose-900 dark:text-rose-200 mb-1">
                           Official Rejection Reason (Mandatory Audit Trail)
                         </label>
                         <textarea
@@ -1785,7 +1825,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <button
                           type="button"
                           onClick={() => setActionMode('NONE')}
-                          className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+                          className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
                         >
                           Back
                         </button>

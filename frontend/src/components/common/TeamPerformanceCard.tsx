@@ -46,7 +46,7 @@ export const TeamPerformanceCard: React.FC<TeamPerformanceCardProps> = ({
               ? m.efficiencyPercent
               : m.todayCount > 0
               ? Math.min(100, Math.round((m.approvedCount / m.todayCount) * 100))
-              : 100;
+              : null;
 
             return (
               <div
@@ -75,8 +75,12 @@ export const TeamPerformanceCard: React.FC<TeamPerformanceCardProps> = ({
                     <span className="mx-1 text-slate-300">·</span>
                     <span>Approved: <strong className="text-emerald-600">{m.approvedCount}</strong></span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60">
-                    {eff}%
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                    eff === null
+                      ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                      : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60'
+                  }`}>
+                    {eff === null ? 'N/A' : `${eff}%`}
                   </span>
                 </div>
               </div>

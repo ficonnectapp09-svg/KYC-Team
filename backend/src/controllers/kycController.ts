@@ -98,6 +98,8 @@ export class KycController {
             { verificationRemarks: /^ESCALATED/i },
             { 'approvalHistory.action': 'ESCALATED', status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] } }
           ];
+        } else if (status === 'In Progress' || status === KycStatus.IN_PROGRESS) {
+          filter.status = { $in: [KycStatus.IN_PROGRESS, KycStatus.ASSIGNED] };
         } else {
           filter.status = status;
         }
@@ -928,6 +930,13 @@ export class KycController {
         return res.status(404).json({ success: false, message: 'KYC Request not found.' });
       }
 
+      if ((kycRequest.status === KycStatus.REJECTED || kycRequest.status === KycStatus.APPROVED) && action !== 'REOPEN') {
+        return res.status(400).json({
+          success: false,
+          message: `KYC Request is already finalized as ${kycRequest.status}. Modifications are locked to preserve audit trail.`
+        });
+      }
+
       if (action === 'APPROVE') {
         const approvalRemarks = remarks || 'All documents verified and approved.';
         kycRequest.status = KycStatus.APPROVED;
@@ -1495,6 +1504,8 @@ export class KycController {
             { verificationRemarks: /^ESCALATED/i },
             { 'approvalHistory.action': 'ESCALATED', status: { $nin: [KycStatus.APPROVED, KycStatus.REJECTED] } }
           ];
+        } else if (status === 'In Progress' || status === KycStatus.IN_PROGRESS) {
+          filter.status = { $in: [KycStatus.IN_PROGRESS, KycStatus.ASSIGNED] };
         } else {
           filter.status = status;
         }

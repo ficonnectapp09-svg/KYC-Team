@@ -203,6 +203,10 @@ export const KycManagement: React.FC = () => {
       if (match) {
         setSelectedReq(match);
         setViewedEscalations(prev => new Set(prev).add(match.requestId).add(match._id));
+        // Clear openId from URL parameters so closing/clicking KPI cards does not reopen modal
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('openId');
+        navigate({ search: newParams.toString() }, { replace: true });
       }
     }
   }, [searchParams, requests]);
@@ -329,17 +333,56 @@ export const KycManagement: React.FC = () => {
   );
   const [employeeStatusTab, setEmployeeStatusTab] = useState<'ALL' | 'IN_PROGRESS' | 'REUPLOAD' | 'COMPLETED'>('ALL');
 
+  const formatVendorId = (applicantId?: string, applicantType?: string) => {
+    if (!applicantId) return 'N/A';
+    if (applicantType === 'Vendor') {
+      if (applicantId.startsWith('VND-')) return applicantId;
+      if (applicantId.startsWith('REG-')) return `VND-${applicantId.replace('REG-', '')}`;
+      if (applicantId.length > 12) return `VND-${applicantId.slice(0, 8).toUpperCase()}`;
+      return `VND-${applicantId}`;
+    }
+    return applicantId;
+  };
+
+  const [showEscalateLeadModal, setShowEscalateLeadModal] = useState<KycRequest | null>(null);
+  const [escalateReason, setEscalateReason] = useState('');
+  const [submittingEscalate, setSubmittingEscalate] = useState(false);
+
+  const handleEscalateToTotalLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showEscalateLeadModal) return;
+    try {
+      setSubmittingEscalate(true);
+      const res = await apiFetch(`/kyc/requests/${showEscalateLeadModal.requestId}/escalate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: escalateReason || 'Escalated by KYC Team Lead for Total Lead executive review.',
+          remarks: escalateReason || 'Escalated to Total Lead'
+        })
+      });
+      setFeedbackMsg(res.message || 'Request successfully escalated to Total Lead.');
+      setShowEscalateLeadModal(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to escalate request.');
+    } finally {
+      setSubmittingEscalate(false);
+    }
+  };
+
   const totalKycCount = total || (summary as any).totalCount || requests.length;
   const pendingKycCount = (summary as any).pendingCount ?? (stats.unassigned || 0);
   const inProgressKycCount = (summary as any).inProgressCount ?? (stats.inProgress || 0);
   const approvedKycCount = (summary as any).completedCount ?? (stats.approved || 0);
   const reuploadKycCount = stats.reuploadRequired || 0;
+  const rejectedKycCount = stats.rejected || requests.filter(r => r.status === 'Rejected').length;
 
   const donutData = [
     { name: 'Approved', value: approvedKycCount, color: '#10B981' },
     { name: 'In Progress', value: inProgressKycCount, color: '#0EA5E9' },
     { name: 'Pending', value: pendingKycCount, color: '#F59E0B' },
-    { name: 'Re-upload', value: reuploadKycCount, color: '#EF4444' }
+    { name: 'Re-upload', value: reuploadKycCount, color: '#F97316' },
+    { name: 'Rejected', value: rejectedKycCount, color: '#EF4444' }
   ];
 
   const teamMembers = (stats.employeeWorkload && stats.employeeWorkload.length > 0)
@@ -394,7 +437,15 @@ export const KycManagement: React.FC = () => {
       label: 'Escalate to Total Lead',
       icon: ArrowRightCircle,
       variant: 'secondary' as const,
-      onClick: () => navigate('/overall')
+      onClick: () => {
+        const candidate = selectedReq || requests.find(r => r.isEscalated || r.status === 'In Progress') || requests[0];
+        if (candidate) {
+          setShowEscalateLeadModal(candidate);
+          setEscalateReason('');
+        } else {
+          alert('No active KYC requests available to escalate.');
+        }
+      }
     },
     {
       label: 'KYC Audit & Reports',
@@ -1045,6 +1096,7 @@ export const KycManagement: React.FC = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th className="py-3.5 px-3 w-12 text-center">S.No</th>
                   {activeCategory.key === 'VENDOR' ? (
                     <>
                       <th className="py-3.5 px-4">Vendor ID</th>
@@ -1099,7 +1151,7 @@ export const KycManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {requests.map(req => {
+                {requests.map((req, idx) => {
                   const details = req.applicantDetails || {};
                   const pendingText = formatPendingDuration(req.submissionDate, req.status);
                   const isEscalatedReq = req.isEscalated ||
@@ -1118,10 +1170,13 @@ export const KycManagement: React.FC = () => {
                           : 'border-l-4 border-l-transparent hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
                     >
+                      <td className="py-3.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                        {(page - 1) * limit + idx + 1}
+                      </td>
                       {activeCategory.key === 'VENDOR' ? (
                         <>
                           <td className="py-3.5 px-4 font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
-                            <div>{req.applicantId}</div>
+                            <div>{formatVendorId(req.applicantId, req.applicantType)}</div>
                             <div className="text-[10px] text-slate-400">{req.requestId}</div>
                           </td>
                           <td className="py-3.5 px-4">
@@ -1490,6 +1545,54 @@ export const KycManagement: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50"
               >
                 {submittingTransferredAction ? 'Processing...' : 'Confirm Action'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Escalate to Total Lead Modal */}
+      <Modal
+        isOpen={!!showEscalateLeadModal}
+        onClose={() => setShowEscalateLeadModal(null)}
+        title="Escalate KYC Case to Total Lead"
+        subtitle={showEscalateLeadModal ? `${showEscalateLeadModal.applicantName} (${showEscalateLeadModal.requestId})` : undefined}
+        maxWidth="md"
+      >
+        {showEscalateLeadModal && (
+          <form onSubmit={handleEscalateToTotalLead} className="space-y-4 text-xs">
+            <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200 leading-relaxed">
+              You are escalating this KYC record for <strong>Total Lead / Executive Oversight</strong>. The case will be flagged with urgent priority and appear in the Overall Operations review queue.
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Escalation Justification & Lead Instructions *
+              </label>
+              <textarea
+                value={escalateReason}
+                onChange={e => setEscalateReason(e.target.value)}
+                placeholder="Explain the regulatory ambiguity, document discrepancy, or policy exception requiring Total Lead decision..."
+                rows={4}
+                required
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowEscalateLeadModal(null)}
+                className="px-4 py-2 rounded-xl font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submittingEscalate || !escalateReason.trim()}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold disabled:opacity-50 transition-colors shadow-sm"
+              >
+                {submittingEscalate ? 'Escalating...' : 'Confirm Escalation to Lead'}
               </button>
             </div>
           </form>

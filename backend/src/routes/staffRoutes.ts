@@ -22,6 +22,8 @@ router.get(
   StaffController.listEmployees
 );
 router.get('/:id/overview', StaffController.getEmployeeOverview);
+router.put('/:id/self-profile', StaffController.updateSelfProfile);
+router.put('/:id/self-bank', StaffController.updateSelfBankDetails);
 router.get(
   '/:id',
   requireRoles([Role.OVERALL_LEAD, Role.KYC_LEAD, Role.PAYMENT_LEAD, Role.QUERIES_LEAD]),

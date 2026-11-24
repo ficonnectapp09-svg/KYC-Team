@@ -133,7 +133,11 @@ export class PaymentController {
       andClauses.push({ transactionType: { $regex: String(subCategory), $options: 'i' } });
     }
     if (status && status !== 'All') {
-      andClauses.push({ status });
+      if (status === 'PROCESSING' || status === 'Processing' || status === 'In Progress') {
+        andClauses.push({ status: { $in: ['PROCESSING', 'PENDING'] } });
+      } else {
+        andClauses.push({ status });
+      }
     }
     if (paymentMethod && paymentMethod !== 'All') {
       andClauses.push({ paymentMethod });
