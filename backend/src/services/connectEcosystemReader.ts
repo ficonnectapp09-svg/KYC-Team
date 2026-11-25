@@ -259,10 +259,10 @@ export class ConnectEcosystemReader {
    * Read-only scan of Connect App `vendors` and `agents` collections to import any
    * pending KYC profiles into `backoffice_kyc_requests` without mutating source collections.
    */
-  static async syncPendingKycFromEcosystem(): Promise<{ importedCount: number; scannedVendors: number; scannedAgents: number }> {
+  static async syncPendingKycFromEcosystem(): Promise<{ importedCount: number; scannedVendors: number; scannedAgents: number; scannedPartners: number }> {
     const db = this.getDb();
 
-    const [vendors, agents] = await Promise.all([
+    const [vendors, agents, partners] = await Promise.all([
       db.collection('vendors').find({
         $or: [
           { kycStatus: { $in: [null, '', 'KYC Pending', 'pending', 'pending_approval', 'under_review', 'submitted', 'Approved', 'approved', 'Verified'] } },
@@ -273,6 +273,12 @@ export class ConnectEcosystemReader {
         $or: [
           { kycStatus: { $in: [null, '', 'pending', 'pending_verification', 'KYC Pending', 'under_review', 'approved'] } },
           { kycStatus: { $exists: false } }
+        ]
+      }).toArray(),
+      db.collection('delivery_partners').find({
+        $or: [
+          { kyc_status: { $in: [null, '', 'pending', 'assigned', 'in_progress', 'reupload_requested'] } },
+          { kyc_status: { $exists: false } }
         ]
       }).toArray()
     ]);
@@ -508,10 +514,151 @@ export class ConnectEcosystemReader {
       }
     }
 
+    for (const p of partners) {
+      const applicantId = String(p.id || p._id);
+      const isTech = p.role === 'technician';
+      const targetApplicantType = isTech ? ApplicantType.TECHNICIAN : ApplicantType.DELIVERY_PARTNER;
+      const partnerPhone = typeof p.mobile === 'string' ? p.mobile.trim() : '';
+      const partnerEmail = typeof p.email === 'string' ? p.email.trim().toLowerCase() : '';
+
+      const exists = await KycRequest.exists({
+        $or: [
+          { applicantId },
+          ...(p.kyc_request_id ? [{ requestId: p.kyc_request_id }] : []),
+          {
+            applicantType: targetApplicantType,
+            $or: [
+              ...(partnerPhone ? [{ phone: partnerPhone }] : []),
+              ...(partnerEmail ? [{ email: partnerEmail }] : [])
+            ]
+          }
+        ]
+      });
+
+      if (!exists) {
+        const uploadedDate = p.kyc_submitted_at ? new Date(p.kyc_submitted_at) : (p.created_at ? new Date(p.created_at) : new Date());
+        const docPairs: Array<[string, unknown]> = [
+          ['Profile Photo', p.photo],
+          ['Aadhaar Front', p.aadhaar_front_url],
+          ['Aadhaar Back', p.aadhaar_back_url],
+          ['PAN Card', p.pan_card_url],
+          ['Address Proof', p.address_proof_url],
+          ...(isTech
+            ? [['Trade Certificate', p.trade_certificate_url] as [string, unknown]]
+            : [
+                ['Driving License', p.driving_license_url] as [string, unknown],
+                ['Vehicle RC', p.rc_book_url] as [string, unknown]
+              ])
+        ];
+        const docs: SyncedKycDoc[] = [];
+        for (const [label, rawUrl] of docPairs) {
+          if (isRealMediaUrl(rawUrl)) {
+            docs.push({
+              docType: label,
+              docName: `${label}.jpg`,
+              docUrl: rawUrl.trim(),
+              version: 1,
+              status: 'Pending',
+              uploadedAt: uploadedDate
+            });
+          }
+        }
+
+        const newReqId = p.kyc_request_id || generateId('KYC');
+        await KycRequest.create({
+          requestId: newReqId,
+          applicantId,
+          applicantName: String(p.name || applicantId),
+          applicantType: targetApplicantType,
+          phone: partnerPhone,
+          email: partnerEmail,
+          applicantDetails: {
+            partnerId: applicantId,
+            role: p.role || (isTech ? 'technician' : 'delivery'),
+            dob: p.dob || '',
+            gender: p.gender || '',
+            panNumberMasked: p.pan ? maskPan(String(p.pan)) : '',
+            aadhaarNumberMasked: p.aadhaar ? maskAadhaar(String(p.aadhaar)) : '',
+            pincode: p.pincode || '',
+            city: p.city || '',
+            district: p.district || '',
+            state: p.state || '',
+            division: p.division || '',
+            address: {
+              doorNumber: p.door_number || '',
+              streetName: p.street_name || '',
+              villageTown: p.village_town || '',
+              city: p.city || '',
+              district: p.district || '',
+              state: p.state || '',
+              pincode: p.pincode || '',
+              division: p.division || '',
+              fullAddress: p.address || ''
+            },
+            emergencyContact: {
+              name: p.emergency_contact_name || '',
+              phone: p.emergency_contact_phone || p.emergency_contact || '',
+              relationship: p.emergency_contact_relationship || ''
+            },
+            bankDetails: p.bank_details
+              ? {
+                  bankName: p.bank_details.bank_name || '',
+                  accountHolderName: p.bank_details.account_holder_name || '',
+                  accountNumberMasked: p.bank_details.account_number ? maskBankAccount(String(p.bank_details.account_number)) : '',
+                  ifscCode: p.bank_details.ifsc_code || '',
+                  branchName: p.bank_details.branch_name || ''
+                }
+              : {},
+            ...(isTech
+              ? {
+                  skillCategory: Array.isArray(p.services_offered) ? p.services_offered.join(', ') : '',
+                  servicesOffered: Array.isArray(p.services_offered) ? p.services_offered : [],
+                  experienceYears: p.experience_years ?? null
+                }
+              : {
+                  vehicleType: p.vehicle_type || '',
+                  vehicleMake: p.vehicle_make || '',
+                  vehicleModel: p.vehicle_model || '',
+                  vehicleNumber: p.vehicle_number || '',
+                  drivingLicense: p.driving_license || '',
+                  drivingLicenseExpiry: p.driving_license_expiry || ''
+                }),
+            sourceCollection: 'delivery_partners'
+          },
+          registrationDate: p.created_at ? new Date(p.created_at) : uploadedDate,
+          submissionDate: uploadedDate,
+          priority: 'Medium',
+          status: KycStatus.UNASSIGNED,
+          documents: docs,
+          approvalHistory: [
+            {
+              action: 'ECOSYSTEM_SYNC',
+              status: KycStatus.UNASSIGNED,
+              actorId: 'ECOSYSTEM',
+              actorName: 'Ecosystem Sync',
+              actorRole: 'system',
+              actorDepartment: 'KYC Team',
+              timestamp: new Date(),
+              remarks: `Imported unlinked ${targetApplicantType} registration`
+            }
+          ]
+        });
+
+        if (!p.kyc_request_id) {
+          await db.collection('delivery_partners').updateOne(
+            { _id: p._id },
+            { $set: { kyc_request_id: newReqId } }
+          );
+        }
+        importedCount += 1;
+      }
+    }
+
     return {
       importedCount,
       scannedVendors: vendors.length,
-      scannedAgents: agents.length
+      scannedAgents: agents.length,
+      scannedPartners: partners.length
     };
   }
 

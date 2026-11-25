@@ -136,7 +136,11 @@ export class KycController {
             { phone: { $regex: search, $options: 'i' } },
             { email: { $regex: search, $options: 'i' } },
             { 'applicantDetails.businessName': { $regex: search, $options: 'i' } },
-            { 'applicantDetails.state': { $regex: search, $options: 'i' } }
+            { 'applicantDetails.state': { $regex: search, $options: 'i' } },
+            { 'applicantDetails.pincode': { $regex: search, $options: 'i' } },
+            { 'applicantDetails.address.fullAddress': { $regex: search, $options: 'i' } },
+            { 'applicantDetails.vehicleNumber': { $regex: search, $options: 'i' } },
+            { 'applicantDetails.skillCategory': { $regex: search, $options: 'i' } }
           ]
         });
       }
@@ -582,23 +586,125 @@ export class KycController {
             bankDetails: sa.bankDetails || {}
           };
         }
-      } else if (appType === ApplicantType.DELIVERY_PARTNER) {
-        const dp = await db.collection('delivery_partners').findOne({
-          $or: [{ _id: applicantId }, { id: applicantId }, { mobile: enriched.phone }]
-        });
+      } else if (appType === ApplicantType.DELIVERY_PARTNER || appType === ApplicantType.TECHNICIAN) {
+        const dpQueries: any[] = [
+          { id: applicantId },
+          ...(mongoose.Types.ObjectId.isValid(applicantId) ? [{ _id: new mongoose.Types.ObjectId(applicantId) }] : []),
+          ...(enriched.phone ? [{ mobile: enriched.phone }] : []),
+          ...(enriched.email ? [{ email: String(enriched.email).toLowerCase() }] : [])
+        ];
+        const dp = await db.collection('delivery_partners').findOne({ $or: dpQueries });
         if (dp) {
+          const isTech = appType === ApplicantType.TECHNICIAN || dp.role === 'technician';
+          const maskedAcc = dp.bank_details?.account_number
+            ? maskBankAccount(String(dp.bank_details.account_number))
+            : enriched.applicantDetails.bankDetails?.accountNumberMasked || '';
+
+          const fullAddr = dp.address || enriched.applicantDetails?.address?.fullAddress || '';
+          const pin = dp.pincode || enriched.applicantDetails?.pincode || enriched.applicantDetails?.address?.pincode || '';
+
           enriched.applicantDetails = {
             ...enriched.applicantDetails,
+            partnerId: dp.id || applicantId,
+            role: dp.role || (isTech ? 'technician' : 'delivery'),
             name: dp.name || enriched.applicantName,
             phone: dp.mobile || enriched.phone,
-            emergencyContact: dp.emergency_contact || '',
-            vehicleType: dp.vehicle_type || enriched.applicantDetails.vehicleType,
-            vehicleNumber: dp.vehicle_number || enriched.applicantDetails.vehicleNumber,
-            drivingLicense: dp.driving_license || enriched.applicantDetails.drivingLicense,
-            serviceZone: dp.serviceZone || enriched.applicantDetails.serviceZone || 'Bengaluru South Hub',
-            joiningDate: dp.joining_date || '',
-            rating: dp.rating || 5.0
+            email: dp.email || enriched.email,
+            dob: dp.dob || enriched.applicantDetails.dob || '',
+            gender: dp.gender || enriched.applicantDetails.gender || '',
+            alternativePhone: dp.alternative_mobile || enriched.applicantDetails.alternativePhone || '',
+            panNumberMasked: dp.pan ? maskPan(String(dp.pan)) : enriched.applicantDetails.panNumberMasked || '',
+            aadhaarNumberMasked: dp.aadhaar ? maskAadhaar(String(dp.aadhaar)) : enriched.applicantDetails.aadhaarNumberMasked || '',
+            address: {
+              doorNumber: dp.door_number || enriched.applicantDetails?.address?.doorNumber || '',
+              streetName: dp.street_name || enriched.applicantDetails?.address?.streetName || '',
+              villageTown: dp.village_town || enriched.applicantDetails?.address?.villageTown || '',
+              city: dp.city || enriched.applicantDetails?.address?.city || '',
+              district: dp.district || enriched.applicantDetails?.address?.district || '',
+              state: dp.state || enriched.applicantDetails?.address?.state || '',
+              pincode: pin,
+              division: dp.division || enriched.applicantDetails?.address?.division || '',
+              fullAddress: fullAddr
+            },
+            pincode: pin,
+            city: dp.city || enriched.applicantDetails.city || '',
+            district: dp.district || enriched.applicantDetails.district || '',
+            state: dp.state || enriched.applicantDetails.state || '',
+            division: dp.division || enriched.applicantDetails.division || '',
+            emergencyContact: {
+              name: dp.emergency_contact_name || enriched.applicantDetails?.emergencyContact?.name || '',
+              phone: dp.emergency_contact_phone || dp.emergency_contact || enriched.applicantDetails?.emergencyContact?.phone || '',
+              relationship: dp.emergency_contact_relationship || enriched.applicantDetails?.emergencyContact?.relationship || ''
+            },
+            bankDetails: {
+              bankName: dp.bank_details?.bank_name || enriched.applicantDetails?.bankDetails?.bankName || '',
+              accountHolderName: dp.bank_details?.account_holder_name || enriched.applicantDetails?.bankDetails?.accountHolderName || '',
+              accountNumberMasked: maskedAcc,
+              ifscCode: dp.bank_details?.ifsc_code || enriched.applicantDetails?.bankDetails?.ifscCode || '',
+              branchName: dp.bank_details?.branch_name || enriched.applicantDetails?.bankDetails?.branchName || ''
+            },
+            joiningDate: dp.joining_date || dp.created_at || '',
+            rating: dp.rating !== undefined ? Number(dp.rating) : 0,
+            ...(isTech
+              ? {
+                  skillCategory:
+                    Array.isArray(dp.services_offered) && dp.services_offered.length > 0
+                      ? dp.services_offered.join(', ')
+                      : enriched.applicantDetails.skillCategory || '',
+                  servicesOffered: Array.isArray(dp.services_offered) ? dp.services_offered : [],
+                  experienceYears: dp.experience_years ?? enriched.applicantDetails.experienceYears ?? null
+                }
+              : {
+                  vehicleType: dp.vehicle_type || enriched.applicantDetails.vehicleType || '',
+                  vehicleMake: dp.vehicle_make || enriched.applicantDetails.vehicleMake || '',
+                  vehicleModel: dp.vehicle_model || enriched.applicantDetails.vehicleModel || '',
+                  vehicleNumber: dp.vehicle_number || enriched.applicantDetails.vehicleNumber || '',
+                  drivingLicense: dp.driving_license || enriched.applicantDetails.drivingLicense || '',
+                  drivingLicenseExpiry: dp.driving_license_expiry || enriched.applicantDetails.drivingLicenseExpiry || ''
+                })
           };
+
+          // Merge real uploaded partner documents without synthesizing missing ones
+          const docCandidates: Array<[string, unknown]> = [
+            ['Profile Photo', dp.photo],
+            ['Aadhaar Front', dp.aadhaar_front_url],
+            ['Aadhaar Back', dp.aadhaar_back_url],
+            ['PAN Card', dp.pan_card_url],
+            ['Address Proof', dp.address_proof_url],
+            ...(isTech
+              ? [['Trade Certificate', dp.trade_certificate_url] as [string, unknown]]
+              : [
+                  ['Driving License', dp.driving_license_url] as [string, unknown],
+                  ['Vehicle RC', dp.rc_book_url] as [string, unknown]
+                ])
+          ];
+          const existingDocs: any[] = Array.isArray(enriched.documents) ? [...enriched.documents] : [];
+          for (const [label, rawUrl] of docCandidates) {
+            if (
+              typeof rawUrl === 'string' &&
+              rawUrl.trim() &&
+              !rawUrl.toLowerCase().includes('placehold.co') &&
+              /^(https?:\/\/|\/uploads\/|data:image\/)/i.test(rawUrl.trim())
+            ) {
+              const alreadyHasDoc = existingDocs.some(
+                (d: any) =>
+                  String(d.docType || '').toLowerCase().trim() === label.toLowerCase() ||
+                  (label === 'Vehicle RC' && String(d.docType || '').toLowerCase().includes('rc'))
+              );
+              if (!alreadyHasDoc) {
+                existingDocs.push({
+                  docType: label,
+                  docName: `${label}.jpg`,
+                  docUrl: rawUrl.trim(),
+                  version: 1,
+                  status: 'Pending',
+                  remarks: '',
+                  uploadedAt: dp.kyc_submitted_at ? new Date(dp.kyc_submitted_at) : dp.created_at || new Date()
+                });
+              }
+            }
+          }
+          enriched.documents = existingDocs;
         }
       } else if ([ApplicantType.KYC_EMPLOYEE, ApplicantType.PAYMENT_EMPLOYEE, ApplicantType.QUERIES_EMPLOYEE].includes(appType)) {
         const emp = await Employee.findOne({
@@ -676,11 +782,16 @@ export class KycController {
       const JSZip = require('jszip');
       const zip = new JSZip();
 
+      const partnerBackendBase = (process.env.PARTNER_BACKEND_URL || 'http://localhost:8008').replace(/\/$/, '');
+
       for (let i = 0; i < request.documents.length; i++) {
         const doc = request.documents[i];
         if (!doc.docUrl) continue;
         try {
-          const fetchRes = await fetch(doc.docUrl);
+          const resolvedFetchUrl = doc.docUrl.startsWith('/uploads/')
+            ? `${partnerBackendBase}${doc.docUrl}`
+            : doc.docUrl;
+          const fetchRes = await fetch(resolvedFetchUrl);
           if (fetchRes.ok) {
             const buffer = Buffer.from(await fetchRes.arrayBuffer());
             let ext = 'png';
@@ -792,9 +903,15 @@ export class KycController {
   }
 
   /**
-   * Helper to synchronize verified approval or rejection back to live ecosystem vendors/agents
+   * Helper to synchronize verified approval, rejection, or re-upload status back to live ecosystem collections
    */
-  private static async syncToEcosystem(kycRequest: any, action: 'APPROVED' | 'REJECTED', currentUser: any, remarks?: string) {
+  private static async syncToEcosystem(
+    kycRequest: any,
+    action: 'APPROVED' | 'REJECTED' | 'RE_UPLOAD_REQUESTED' | 'ASSIGNED',
+    currentUser: any,
+    remarks?: string,
+    documentType?: string
+  ) {
     try {
       const db = mongoose.connection.db;
       if (!db) return;
@@ -802,12 +919,125 @@ export class KycController {
       const applicantId = String(kycRequest.applicantId || '');
       const isVendor = kycRequest.applicantType === ApplicantType.VENDOR;
       const isAgent = kycRequest.applicantType === ApplicantType.AGENT;
+      const isPartnerOrTech =
+        kycRequest.applicantType === ApplicantType.DELIVERY_PARTNER ||
+        kycRequest.applicantType === ApplicantType.TECHNICIAN;
 
-      if (!isVendor && !isAgent) return;
+      if (!isVendor && !isAgent && !isPartnerOrTech) return;
 
       const idQueries: any[] = [{ registrationId: applicantId }, { id: applicantId }];
       if (mongoose.Types.ObjectId.isValid(applicantId)) {
         idQueries.unshift({ _id: new mongoose.Types.ObjectId(applicantId) });
+      }
+
+      if (isPartnerOrTech) {
+        const partnerQuery: any = {
+          $or: [
+            { id: applicantId },
+            ...(mongoose.Types.ObjectId.isValid(applicantId) ? [{ _id: new mongoose.Types.ObjectId(applicantId) }] : []),
+            ...(kycRequest.phone ? [{ mobile: kycRequest.phone }] : []),
+            ...(kycRequest.email ? [{ email: String(kycRequest.email).toLowerCase() }] : [])
+          ]
+        };
+        const now = new Date();
+        const nowIso = now.toISOString();
+
+        if (action === 'APPROVED') {
+          await db.collection('delivery_partners').updateOne(partnerQuery, {
+            $set: {
+              kyc_status: 'verified',
+              kyc_request_id: kycRequest.requestId,
+              kyc_verified_at: nowIso,
+              kyc_verified_by: currentUser?.name || 'KYC Team',
+              kyc_rejection_reason: null,
+              kyc_reupload_reason: null,
+              kyc_reupload_doc_type: null,
+              updated_at: nowIso
+            }
+          });
+          await db.collection('kyc_records').updateOne(
+            { partnerId: applicantId },
+            { $set: { status: 'Approved', reviewedBy: currentUser?.name || 'KYC Team', updatedAt: nowIso } }
+          );
+          await db.collection('notifications').updateOne(
+            { partner_id: applicantId, reference_id: kycRequest.requestId, category: 'kyc_approved' },
+            {
+              $setOnInsert: {
+                id: `notif_kyc_app_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                partner_id: applicantId,
+                partnerId: applicantId,
+                title: 'KYC Approved!',
+                body: `Congratulations! Your ${kycRequest.applicantType} KYC (${kycRequest.requestId}) has been approved. You can now go Online and accept requests.`,
+                category: 'kyc_approved',
+                reference_id: kycRequest.requestId,
+                read: false,
+                created_at: nowIso
+              }
+            },
+            { upsert: true }
+          );
+        } else if (action === 'REJECTED') {
+          await db.collection('delivery_partners').updateOne(partnerQuery, {
+            $set: {
+              kyc_status: 'rejected',
+              kyc_request_id: kycRequest.requestId,
+              kyc_rejection_reason: remarks || 'Rejected by KYC Team',
+              availability: false,
+              status: 'Offline',
+              updated_at: nowIso
+            }
+          });
+          await db.collection('kyc_records').updateOne(
+            { partnerId: applicantId },
+            { $set: { status: 'Rejected', reason: remarks || 'Rejected by KYC Team', updatedAt: nowIso } }
+          );
+          await db.collection('notifications').insertOne({
+            id: `notif_kyc_rej_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            partner_id: applicantId,
+            partnerId: applicantId,
+            title: 'KYC Application Rejected',
+            body: `Your ${kycRequest.applicantType} KYC (${kycRequest.requestId}) was rejected: ${remarks || 'Incomplete or invalid documents.'}`,
+            category: 'kyc_rejected',
+            reference_id: kycRequest.requestId,
+            read: false,
+            created_at: nowIso
+          });
+        } else if (action === 'RE_UPLOAD_REQUESTED') {
+          await db.collection('delivery_partners').updateOne(partnerQuery, {
+            $set: {
+              kyc_status: 'reupload_requested',
+              kyc_request_id: kycRequest.requestId,
+              kyc_reupload_reason: remarks || 'Please re-upload a clearer document.',
+              kyc_reupload_doc_type: documentType || 'Document',
+              availability: false,
+              status: 'Offline',
+              updated_at: nowIso
+            }
+          });
+          await db.collection('kyc_records').updateOne(
+            { partnerId: applicantId },
+            {
+              $set: {
+                status: 'Re-upload Requested',
+                reason: remarks || 'Re-upload required',
+                documentType: documentType || 'Document',
+                updatedAt: nowIso
+              }
+            }
+          );
+          await db.collection('notifications').insertOne({
+            id: `notif_kyc_reup_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            partner_id: applicantId,
+            partnerId: applicantId,
+            title: 'KYC Document Re-upload Required',
+            body: `Please re-upload ${documentType || 'your document'} for ${kycRequest.requestId}. Reason: ${remarks || 'Document unclear or mismatched.'}`,
+            category: 'kyc_reupload',
+            reference_id: kycRequest.requestId,
+            read: false,
+            created_at: nowIso
+          });
+        }
+        return;
       }
 
       if (isVendor) {
@@ -930,6 +1160,17 @@ export class KycController {
         return res.status(404).json({ success: false, message: 'KYC Request not found.' });
       }
 
+      if (
+        currentUser.role === Role.KYC_EMPLOYEE &&
+        kycRequest.assignedEmployeeId &&
+        kycRequest.assignedEmployeeId !== currentUser.employeeId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only verify KYC applications assigned to you or in the unassigned queue.'
+        });
+      }
+
       if ((kycRequest.status === KycStatus.REJECTED || kycRequest.status === KycStatus.APPROVED) && action !== 'REOPEN') {
         return res.status(400).json({
           success: false,
@@ -964,14 +1205,20 @@ export class KycController {
         });
         kycRequest.lastUpdated = new Date();
 
-        // Mark all documents verified
+        // Mark all documents verified & resolve pending re-upload markers
         kycRequest.documents.forEach(doc => {
           doc.status = 'Verified';
           doc.verifiedBy = currentUser.name;
           doc.verifiedAt = new Date();
         });
+        kycRequest.reuploadRequests.forEach(r => {
+          if (!r.isResolved) {
+            r.isResolved = true;
+            r.resolvedAt = new Date();
+          }
+        });
 
-        // Sync to live vendors / agents collections
+        // Sync to live ecosystem collections (vendors, agents, delivery partners, technicians)
         await KycController.syncToEcosystem(kycRequest, 'APPROVED', currentUser, approvalRemarks);
 
         // Trigger Critical KYC-to-Payment Routing
@@ -979,6 +1226,21 @@ export class KycController {
           kycRequest,
           { id: currentUser.employeeId, name: currentUser.name, role: currentUser.role }
         );
+
+        await NotificationItem.create({
+          notificationId: generateId('NOTIF'),
+          targetRole: Role.KYC_LEAD,
+          targetDepartment: Department.KYC,
+          title: `KYC Approved: ${kycRequest.requestId}`,
+          message: `${currentUser.name} approved ${kycRequest.applicantType} KYC for ${kycRequest.applicantName} (${kycRequest.applicantId}).`,
+          type: 'KYC',
+          actionUrl:
+            kycRequest.applicantType === ApplicantType.DELIVERY_PARTNER
+              ? '/kyc/delivery-partner'
+              : kycRequest.applicantType === ApplicantType.TECHNICIAN
+                ? '/kyc/technician'
+                : '/kyc'
+        });
 
         await logAudit(
           req,
@@ -1030,8 +1292,23 @@ export class KycController {
 
         await kycRequest.save();
 
-        // Sync to live vendors / agents collections
+        // Sync to live ecosystem collections
         await KycController.syncToEcosystem(kycRequest, 'REJECTED', currentUser, reason);
+
+        await NotificationItem.create({
+          notificationId: generateId('NOTIF'),
+          targetRole: Role.KYC_LEAD,
+          targetDepartment: Department.KYC,
+          title: `KYC Rejected: ${kycRequest.requestId}`,
+          message: `${currentUser.name} rejected ${kycRequest.applicantType} KYC for ${kycRequest.applicantName}. Reason: ${reason}`,
+          type: 'KYC',
+          actionUrl:
+            kycRequest.applicantType === ApplicantType.DELIVERY_PARTNER
+              ? '/kyc/delivery-partner'
+              : kycRequest.applicantType === ApplicantType.TECHNICIAN
+                ? '/kyc/technician'
+                : '/kyc'
+        });
 
         await logAudit(
           req,
@@ -1056,8 +1333,11 @@ export class KycController {
           });
         }
 
-        // Find relevant document and preserve clean historical snapshot
-        const targetDoc = kycRequest.documents.find(d => d.docType === documentType);
+        // Find relevant document (exact or case-insensitive) and preserve historical snapshot
+        const normDocType = String(documentType).toLowerCase().trim();
+        const targetDoc =
+          kycRequest.documents.find(d => d.docType === documentType) ||
+          kycRequest.documents.find(d => String(d.docType || '').toLowerCase().trim() === normDocType);
         if (targetDoc) {
           targetDoc.status = 'Re-upload Required';
           targetDoc.remarks = reason;
@@ -1073,6 +1353,7 @@ export class KycController {
         }
 
         kycRequest.status = KycStatus.RE_UPLOAD_REQUESTED;
+        kycRequest.verificationRemarks = `Re-upload requested for ${documentType}: ${reason}`;
         kycRequest.reuploadRequests.push({
           documentType,
           reason,
@@ -1095,6 +1376,23 @@ export class KycController {
         kycRequest.lastUpdated = new Date();
 
         await kycRequest.save();
+
+        await KycController.syncToEcosystem(kycRequest, 'RE_UPLOAD_REQUESTED', currentUser, reason, documentType);
+
+        await NotificationItem.create({
+          notificationId: generateId('NOTIF'),
+          targetRole: Role.KYC_LEAD,
+          targetDepartment: Department.KYC,
+          title: `Re-upload Requested: ${kycRequest.requestId}`,
+          message: `${currentUser.name} requested ${documentType} re-upload for ${kycRequest.applicantName}. Reason: ${reason}`,
+          type: 'KYC',
+          actionUrl:
+            kycRequest.applicantType === ApplicantType.DELIVERY_PARTNER
+              ? '/kyc/delivery-partner'
+              : kycRequest.applicantType === ApplicantType.TECHNICIAN
+                ? '/kyc/technician'
+                : '/kyc'
+        });
 
         await logAudit(
           req,
@@ -1263,6 +1561,17 @@ export class KycController {
         return res.status(404).json({ success: false, message: 'KYC Request not found.' });
       }
 
+      if (
+        currentUser.role === Role.KYC_EMPLOYEE &&
+        kycRequest.assignedEmployeeId &&
+        kycRequest.assignedEmployeeId !== currentUser.employeeId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only update KYC requests assigned to you or unassigned requests.'
+        });
+      }
+
       const targetDoc = kycRequest.documents.find((d) => d.docType === docType);
       if (!targetDoc) {
         return res.status(404).json({ success: false, message: `Document type "${docType}" not found on this KYC request.` });
@@ -1343,7 +1652,7 @@ export class KycController {
         'KYC_ECOSYSTEM_SYNC',
         'KYC',
         'ECOSYSTEM_READER',
-        `Scanned ${result.scannedVendors} vendors & ${result.scannedAgents} agents (read-only); imported ${result.importedCount} new pending KYC requests.`
+        `Scanned ${result.scannedVendors} vendors, ${result.scannedAgents} agents & ${result.scannedPartners} partners; imported ${result.importedCount} new pending KYC requests.`
       );
 
       return res.json({
@@ -1385,6 +1694,31 @@ export class KycController {
       const reuploadRequired = allRequests.filter((r) => r.status === KycStatus.RE_UPLOAD_REQUESTED).length;
 
       const slaCutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const startOfTodayMs = startOfToday.getTime();
+
+      const completedToday = allRequests.filter((r) => {
+        if (![KycStatus.APPROVED, KycStatus.REJECTED].includes(r.status as KycStatus)) return false;
+        const ts = r.reviewedAt ? new Date(r.reviewedAt).getTime() : (r.lastUpdated ? new Date(r.lastUpdated).getTime() : 0);
+        return ts >= startOfTodayMs;
+      }).length;
+
+      const currentEmpId = req.user?.employeeId;
+      const myAssignedRequests = currentEmpId ? allRequests.filter((r) => r.assignedEmployeeId === currentEmpId) : [];
+      const myQueue = {
+        assigned: myAssignedRequests.filter((r) => r.status === KycStatus.ASSIGNED).length,
+        inProgress: myAssignedRequests.filter((r) => r.status === KycStatus.IN_PROGRESS).length,
+        pendingAction: myAssignedRequests.filter((r) =>
+          [KycStatus.ASSIGNED, KycStatus.IN_PROGRESS, KycStatus.RE_UPLOAD_REQUESTED].includes(r.status as KycStatus)
+        ).length,
+        completedToday: myAssignedRequests.filter((r) => {
+          if (![KycStatus.APPROVED, KycStatus.REJECTED].includes(r.status as KycStatus)) return false;
+          const ts = r.reviewedAt ? new Date(r.reviewedAt).getTime() : (r.lastUpdated ? new Date(r.lastUpdated).getTime() : 0);
+          return ts >= startOfTodayMs;
+        }).length
+      };
+
       const overdueCount = allRequests.filter(
         (r) =>
           ![KycStatus.APPROVED, KycStatus.REJECTED].includes(r.status as KycStatus) &&
@@ -1433,9 +1767,11 @@ export class KycController {
           approved,
           rejected,
           reuploadRequired,
+          completedToday,
           overdueCount,
           avgVerificationHours,
-          employeeWorkload
+          employeeWorkload,
+          myQueue
         }
       });
     } catch (error: any) {
@@ -1453,6 +1789,17 @@ export class KycController {
       const kycRequest = await KycRequest.findOne(buildIdFilter('requestId', id));
       if (!kycRequest) {
         return res.status(404).json({ success: false, message: 'KYC Request not found.' });
+      }
+
+      if (
+        currentUser.role === Role.KYC_EMPLOYEE &&
+        kycRequest.assignedEmployeeId &&
+        kycRequest.assignedEmployeeId !== currentUser.employeeId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You can only update KYC requests assigned to you or unassigned requests.'
+        });
       }
 
       const db = mongoose.connection.db;
@@ -1496,6 +1843,23 @@ export class KycController {
           if (m) {
             rawPan = m.documents?.panNumber || '';
             rawAadhaar = m.documents?.aadharNumber || '';
+          }
+        } else if (
+          kycRequest.applicantType === ApplicantType.DELIVERY_PARTNER ||
+          kycRequest.applicantType === ApplicantType.TECHNICIAN
+        ) {
+          const dpQueries: any[] = [
+            { id: applicantId },
+            ...(mongoose.Types.ObjectId.isValid(applicantId) ? [{ _id: new mongoose.Types.ObjectId(applicantId) }] : []),
+            ...(kycRequest.phone ? [{ mobile: kycRequest.phone }] : []),
+            ...(kycRequest.email ? [{ email: String(kycRequest.email).toLowerCase() }] : [])
+          ];
+          const dp = await db.collection('delivery_partners').findOne({ $or: dpQueries });
+          if (dp) {
+            rawPan = dp.pan || '';
+            rawAadhaar = dp.aadhaar || '';
+            rawAccountNumber = dp.bank_details?.account_number || '';
+            rawIfsc = dp.bank_details?.ifsc_code || '';
           }
         }
       }

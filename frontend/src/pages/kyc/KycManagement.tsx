@@ -184,6 +184,7 @@ export const KycManagement: React.FC = () => {
           setKycStaff((staffRes.data || []).filter(s => s.status === 'active'));
         }
       }
+      window.dispatchEvent(new Event('support:counts_invalidated'));
     } catch (err: any) {
       setLoadError(err?.message || 'Unable to load KYC requests.');
     } finally {
@@ -409,19 +410,19 @@ export const KycManagement: React.FC = () => {
 
   const isQueriesTab = activeCategory.key === 'KYC_QUERIES';
   const totalKycCount = isQueriesTab
-    ? ((globalStats.unassigned || 0) + (globalStats.inProgress || 0) + (globalStats.approved || 0) + (globalStats.reuploadRequired || 0) + (globalStats.rejected || 0) || categoryCounts['ALL'] || 22)
+    ? ((globalStats.unassigned || 0) + (globalStats.inProgress || 0) + (globalStats.approved || 0) + (globalStats.reuploadRequired || 0) + (globalStats.rejected || 0) || categoryCounts['ALL'] || 0)
     : (total || (summary as any).totalCount || requests.length);
   const pendingKycCount = isQueriesTab
-    ? (globalStats.unassigned || 3)
+    ? (globalStats.unassigned || 0)
     : ((summary as any).pendingCount ?? (stats.unassigned || 0));
   const inProgressKycCount = isQueriesTab
-    ? (globalStats.inProgress || 12)
+    ? (globalStats.inProgress || 0)
     : ((summary as any).inProgressCount ?? (stats.inProgress || 0));
   const approvedKycCount = isQueriesTab
-    ? (globalStats.approved || 6)
+    ? (globalStats.approved || 0)
     : ((summary as any).completedCount ?? (stats.approved || 0));
   const reuploadKycCount = isQueriesTab
-    ? (globalStats.reuploadRequired || 1)
+    ? (globalStats.reuploadRequired || 0)
     : (stats.reuploadRequired || 0);
   const rejectedKycCount = isQueriesTab
     ? (globalStats.rejected || 0)
@@ -452,11 +453,13 @@ export const KycManagement: React.FC = () => {
   const myRequests = requests.filter(r =>
     !r.assignedEmployeeId || r.assignedEmployeeId === user?.employeeId || isEmployee
   );
-  const myAssignedCount = myRequests.length;
-  const myInProgressCount = myRequests.filter(r => r.status === 'In Progress' || r.status === 'Assigned').length;
-  const myPendingActionCount = myRequests.filter(r => ['Unassigned', 'Re-upload Requested'].includes(r.status)).length;
-  const myCompletedCount = myRequests.filter(r => ['Approved', 'Rejected'].includes(r.status)).length;
-  const employeeCompletionRate = myAssignedCount > 0 ? Math.round((myCompletedCount / myAssignedCount) * 100) : 100;
+  const myAssignedCount = stats?.myQueue?.assigned ?? myRequests.filter(r => r.status === 'Assigned').length;
+  const myInProgressCount = stats?.myQueue?.inProgress ?? myRequests.filter(r => r.status === 'In Progress').length;
+  const myPendingActionCount = stats?.myQueue?.pendingAction ?? myRequests.filter(r => ['Unassigned', 'Re-upload Requested', 'Assigned', 'In Progress'].includes(r.status)).length;
+  const myCompletedCount = stats?.myQueue?.completedToday ?? myRequests.filter(r => ['Approved', 'Rejected'].includes(r.status)).length;
+  const employeeCompletionRate = (myAssignedCount + myCompletedCount) > 0
+    ? Math.round((myCompletedCount / (myAssignedCount + myCompletedCount)) * 100)
+    : 0;
 
   const filteredMyRequests = myRequests.filter(r => {
     if (employeeStatusTab === 'IN_PROGRESS') return r.status === 'In Progress' || r.status === 'Assigned';
@@ -757,13 +760,21 @@ export const KycManagement: React.FC = () => {
                               </>
                             ) : req.applicantType === 'Delivery Partner' ? (
                               <>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{details.vehicleNumber || details.vehicleType || 'Fleet Rider'}</div>
-                                <div className="text-[10px] text-slate-400">{details.serviceZone || req.phone}</div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {req.phone || 'Not Provided'} {details.vehicleNumber ? `• ${details.vehicleNumber}` : details.vehicleType ? `• ${details.vehicleType}` : ''}
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[220px]">
+                                  {details.address?.fullAddress || [details.city, details.pincode].filter(Boolean).join(' - ') || req.email || 'Not Provided'}
+                                </div>
                               </>
                             ) : req.applicantType === 'Technician' ? (
                               <>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{details.skillCategory || 'Service Technician'}</div>
-                                <div className="text-[10px] text-slate-400">{details.serviceZone || req.phone}</div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {req.phone || 'Not Provided'} {details.skillCategory ? `• ${details.skillCategory}` : ''}
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[220px]">
+                                  {details.address?.fullAddress || [details.city, details.pincode].filter(Boolean).join(' - ') || req.email || 'Not Provided'}
+                                </div>
                               </>
                             ) : ['KYC Team Employee', 'Payment Team Employee', 'Queries Team Employee'].includes(req.applicantType) ? (
                               <>
@@ -1175,16 +1186,38 @@ export const KycManagement: React.FC = () => {
                       <th className="py-3.5 px-4">Pending Duration</th>
                       <th className="py-3.5 px-5 text-right">View Details</th>
                     </>
+                  ) : activeCategory.key === 'DELIVERY_PARTNER' ? (
+                    <>
+                      <th className="py-3.5 px-4">Applicant & Delivery Partner ID</th>
+                      <th className="py-3.5 px-4">Name, Mobile & Email</th>
+                      <th className="py-3.5 px-4">Address & Pincode</th>
+                      <th className="py-3.5 px-4">Reg / KYC Submitted</th>
+                      <th className="py-3.5 px-4">Assigned KYC Executive</th>
+                      <th className="py-3.5 px-4">Verification Status</th>
+                      <th className="py-3.5 px-4">Approved / Reviewed By</th>
+                      <th className="py-3.5 px-4">Approver Role / Dept</th>
+                      <th className="py-3.5 px-4">Pending Duration</th>
+                      <th className="py-3.5 px-5 text-right">Action</th>
+                    </>
+                  ) : activeCategory.key === 'TECHNICIAN' ? (
+                    <>
+                      <th className="py-3.5 px-4">Applicant & Technician ID</th>
+                      <th className="py-3.5 px-4">Name, Mobile & Email</th>
+                      <th className="py-3.5 px-4">Address, Pincode & Trade</th>
+                      <th className="py-3.5 px-4">Reg / KYC Submitted</th>
+                      <th className="py-3.5 px-4">Assigned KYC Executive</th>
+                      <th className="py-3.5 px-4">Verification Status</th>
+                      <th className="py-3.5 px-4">Approved / Reviewed By</th>
+                      <th className="py-3.5 px-4">Approver Role / Dept</th>
+                      <th className="py-3.5 px-4">Pending Duration</th>
+                      <th className="py-3.5 px-5 text-right">Action</th>
+                    </>
                   ) : (
                     <>
                       <th className="py-3.5 px-4">Applicant ID & Name</th>
                       <th className="py-3.5 px-4">
                         {activeCategory.key === 'CUSTOMER'
                           ? 'Mobile & Email'
-                          : activeCategory.key === 'DELIVERY_PARTNER'
-                          ? 'Vehicle & Delivery Zone'
-                          : activeCategory.key === 'TECHNICIAN'
-                          ? 'Skill Category & Zone'
                           : ['KYC_EMPLOYEE', 'PAYMENT_EMPLOYEE', 'QUERIES_EMPLOYEE'].includes(activeCategory.key)
                           ? 'Department & Designation'
                           : activeCategory.key === 'MANAGER'
@@ -1257,6 +1290,48 @@ export const KycManagement: React.FC = () => {
                             <div className="text-[11px] text-slate-400">{details.agentRole || 'Connect Agent'}</div>
                           </td>
                         </>
+                      ) : activeCategory.key === 'DELIVERY_PARTNER' ? (
+                        <>
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            <div className="font-bold text-indigo-600 dark:text-indigo-400">{req.requestId}</div>
+                            <div className="text-[10px] text-slate-400">DP: {req.applicantId}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900 dark:text-white">{req.applicantName}</div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-300">{req.phone || 'Not Provided'}</div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{req.email || 'Not Provided'}</div>
+                          </td>
+                          <td className="py-3.5 px-4 max-w-[240px]">
+                            <div className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2">
+                              {details.address?.fullAddress || [details.city, details.district, details.state].filter(Boolean).join(', ') || 'Not Provided'}
+                            </div>
+                            <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
+                              PIN: {details.pincode || details.address?.pincode || 'Not Provided'}
+                              {details.vehicleNumber || details.vehicleType ? ` • ${details.vehicleNumber || details.vehicleType}` : ''}
+                            </div>
+                          </td>
+                        </>
+                      ) : activeCategory.key === 'TECHNICIAN' ? (
+                        <>
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            <div className="font-bold text-indigo-600 dark:text-indigo-400">{req.requestId}</div>
+                            <div className="text-[10px] text-slate-400">TECH: {req.applicantId}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900 dark:text-white">{req.applicantName}</div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-300">{req.phone || 'Not Provided'}</div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{req.email || 'Not Provided'}</div>
+                          </td>
+                          <td className="py-3.5 px-4 max-w-[240px]">
+                            <div className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2">
+                              {details.address?.fullAddress || [details.city, details.district, details.state].filter(Boolean).join(', ') || 'Not Provided'}
+                            </div>
+                            <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
+                              PIN: {details.pincode || details.address?.pincode || 'Not Provided'}
+                              {details.skillCategory ? ` • ${details.skillCategory}` : ''}
+                            </div>
+                          </td>
+                        </>
                       ) : (
                         <>
                           <td className="py-3.5 px-4">
@@ -1270,16 +1345,6 @@ export const KycManagement: React.FC = () => {
                               <>
                                 <div className="font-semibold text-slate-800 dark:text-slate-200">{req.phone}</div>
                                 <div className="text-[11px] text-slate-400">{req.email}</div>
-                              </>
-                            ) : activeCategory.key === 'DELIVERY_PARTNER' ? (
-                              <>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{details.vehicleNumber || details.vehicleType || 'Fleet Rider'}</div>
-                                <div className="text-[11px] text-slate-400">{details.serviceZone || req.phone}</div>
-                              </>
-                            ) : activeCategory.key === 'TECHNICIAN' ? (
-                              <>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{details.skillCategory || 'Field Technician'}</div>
-                                <div className="text-[11px] text-slate-400">{details.serviceZone || details.certificationId || req.phone}</div>
                               </>
                             ) : ['KYC_EMPLOYEE', 'PAYMENT_EMPLOYEE', 'QUERIES_EMPLOYEE'].includes(activeCategory.key) ? (
                               <>

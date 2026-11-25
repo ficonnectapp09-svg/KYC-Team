@@ -54,7 +54,9 @@ interface KycVerificationWorkbenchProps {
   currentUserId?: string;
 }
 
-// Helper to resolve document URLs: handles Cloudinary public IDs, local files, or full URLs
+// Helper to resolve document URLs: handles Cloudinary public IDs, local partner /uploads files, or full URLs
+const PARTNER_UPLOAD_BASE = ((import.meta as any)?.env?.VITE_PARTNER_BACKEND_URL || 'http://localhost:8008').replace(/\/$/, '');
+
 export const resolveDocumentUrl = (rawUrl?: string): string => {
   if (!rawUrl) return '';
   const trimmed = rawUrl.trim();
@@ -65,6 +67,9 @@ export const resolveDocumentUrl = (rawUrl?: string): string => {
     trimmed.startsWith('data:')
   ) {
     return trimmed;
+  }
+  if (trimmed.startsWith('/uploads/')) {
+    return `${PARTNER_UPLOAD_BASE}${trimmed}`;
   }
   // Cloudinary public ID or short identifier
   if (/^[a-zA-Z0-9_\-\/]+$/.test(trimmed)) {
@@ -78,8 +83,8 @@ const CATEGORY_DOC_CHECKLIST: Record<string, string[]> = {
   Vendor: ['PAN Card', 'Aadhaar Card', 'GST Certificate', 'Business Registration', 'Storefront / Business Photos', 'Bank Proof'],
   Agent: ['Aadhaar Card', 'PAN Card', 'Passport Photograph', 'Specimen Signature', 'Cancelled Cheque', 'Educational Certificate'],
   Manager: ['Aadhaar Card', 'PAN Card', 'Passport Photograph', 'Specimen Signature', 'Bank Passbook / Cheque', 'Degree Certificate'],
-  'Delivery Partner': ['Driving License', 'Vehicle RC', 'Commercial Insurance', 'Aadhaar Card', 'Profile Photo'],
-  Technician: ['Trade Certificate / ITI', 'Aadhaar Card', 'PAN Card', 'Workshop / Profile Photo'],
+  'Delivery Partner': ['Profile Photo', 'Aadhaar Front', 'Aadhaar Back', 'PAN Card', 'Driving License', 'Vehicle RC'],
+  Technician: ['Profile Photo', 'Aadhaar Front', 'Aadhaar Back', 'PAN Card', 'Trade Certificate'],
   'KYC Team Employee': ['Background Verification (BGV) Report', 'Aadhaar / ID Proof', 'PAN Card', 'Degree Certificate', 'Offer Letter'],
   'Payment Team Employee': ['PAN & Bank Verification', 'Aadhaar / ID Proof', 'Background Clearance', 'Offer Letter'],
   'Queries Team Employee': ['Aadhaar / ID Proof', 'Offer Letter', 'Educational Certificate', 'PAN Card'],
@@ -252,11 +257,11 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
       const nameLower = (doc.docName || '').toLowerCase();
       const combined = `${typeLower} ${nameLower}`;
 
-      if (combined.includes('pan') || combined.includes('aadhaar') || combined.includes('passport') || combined.includes('voter') || combined.includes('id proof')) {
+      if (combined.includes('pan') || combined.includes('aadhaar') || combined.includes('passport') || combined.includes('voter') || combined.includes('id proof') || combined.includes('identity') || combined.includes('profile') || combined.includes('photo')) {
         groups.identity.push(doc);
-      } else if (combined.includes('gst') || combined.includes('license') || combined.includes('registration') || combined.includes('store') || combined.includes('shop') || combined.includes('authority')) {
+      } else if (combined.includes('gst') || combined.includes('registration') || combined.includes('store') || combined.includes('shop') || combined.includes('authority') || combined.includes('address proof')) {
         groups.business.push(doc);
-      } else if (combined.includes('degree') || combined.includes('iti') || combined.includes('driving') || combined.includes('rc') || combined.includes('insurance') || combined.includes('bgv') || combined.includes('background') || combined.includes('offer')) {
+      } else if (combined.includes('degree') || combined.includes('iti') || combined.includes('trade') || combined.includes('certificate') || combined.includes('driving') || combined.includes('license') || combined.includes('rc') || combined.includes('insurance') || combined.includes('bgv') || combined.includes('background') || combined.includes('offer')) {
         groups.qualification.push(doc);
       } else if (combined.includes('bank') || combined.includes('cheque') || combined.includes('passbook') || combined.includes('statement')) {
         groups.bank.push(doc);
@@ -986,11 +991,11 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       </div>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Alternate Contact</span>
-                        <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.alternatePhone || details.altPhone || 'N/A'}</div>
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.alternativePhone || details.alternatePhone || details.altPhone || 'Not Provided'}</div>
                       </div>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Email Address</span>
-                        <div className="text-slate-700 dark:text-slate-300 mt-0.5 truncate">{liveReq.email || 'N/A'}</div>
+                        <div className="text-slate-700 dark:text-slate-300 mt-0.5 truncate">{liveReq.email || 'Not Provided'}</div>
                       </div>
                       {details.dob && (
                         <div>
@@ -1004,12 +1009,16 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                           <div className="text-slate-700 dark:text-slate-300 mt-0.5 capitalize">{details.gender}</div>
                         </div>
                       )}
-                      {details.emergencyContact && (
+                      {details.emergencyContact && (details.emergencyContact.name || details.emergencyContact.phone || typeof details.emergencyContact === 'string') && (
                         <div className="col-span-2 pt-1 border-t border-slate-200 dark:border-slate-800">
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Emergency Contact</span>
                           <div className="text-slate-700 dark:text-slate-300 mt-0.5">
                             {typeof details.emergencyContact === 'object'
-                              ? `${details.emergencyContact.name} (${details.emergencyContact.relationship}): ${details.emergencyContact.phone}`
+                              ? [
+                                  details.emergencyContact.name || 'Not Provided',
+                                  details.emergencyContact.relationship ? `(${details.emergencyContact.relationship})` : '',
+                                  details.emergencyContact.phone || 'Not Provided'
+                                ].filter(Boolean).join(' ')
                               : details.emergencyContact}
                           </div>
                         </div>
@@ -1157,7 +1166,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
                           {unmaskedSensitive
                             ? unmaskedSensitive.pan
-                            : details.panNumberMasked || (details.pan ? (details.pan.length > 4 ? `••••••${details.pan.slice(-4)}` : '••••••••') : '•••••9012•')}
+                            : details.panNumberMasked || (details.pan ? (details.pan.length > 4 ? `••••••${details.pan.slice(-4)}` : '••••••••') : 'Not Provided')}
                         </div>
                       </div>
                       <div>
@@ -1165,7 +1174,7 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         <div className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
                           {unmaskedSensitive
                             ? unmaskedSensitive.aadhaar
-                            : details.aadhaarNumberMasked || (details.aadhaar ? `•••• •••• ${details.aadhaar.slice(-4)}` : '•••• •••• 8812')}
+                            : details.aadhaarNumberMasked || (details.aadhaar ? `•••• •••• ${details.aadhaar.slice(-4)}` : 'Not Provided')}
                         </div>
                       </div>
                       {(details.gst !== undefined || details.gstNumber || unmaskedSensitive?.gst) && (
@@ -1298,19 +1307,25 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Vehicle Type</span>
-                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.vehicleType || 'Two Wheeler'}</div>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.vehicleType || 'Not Provided'}</div>
                         </div>
                         <div>
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Vehicle Number</span>
-                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.vehicleNumber || 'KA-01-EV-9042'}</div>
+                          <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{details.vehicleNumber || 'Not Provided'}</div>
                         </div>
+                        {(details.vehicleMake || details.vehicleModel) && (
+                          <div className="col-span-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Vehicle Make / Model</span>
+                            <div className="text-slate-700 dark:text-slate-300 mt-0.5">{[details.vehicleMake, details.vehicleModel].filter(Boolean).join(' ')}</div>
+                          </div>
+                        )}
                         <div>
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Driving License</span>
-                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">{details.drivingLicense || 'KA01-2021-88912'}</div>
+                          <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">{details.drivingLicense || 'Not Provided'}</div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Service Zone</span>
-                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.serviceZone || 'Bengaluru South'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Service Zone / Division</span>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.division || details.city || details.serviceZone || 'Not Provided'}</div>
                         </div>
                       </div>
                     )}
@@ -1319,16 +1334,20 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                     {liveReq.applicantType === 'Technician' && (
                       <div className="grid grid-cols-2 gap-2">
                         <div className="col-span-2">
-                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Skill Trade Category</span>
-                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">{details.skillCategory || 'Electrical & Appliance Repair'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Skill Trade / Services Offered</span>
+                          <div className="font-bold text-slate-900 dark:text-white mt-0.5">
+                            {details.skillCategory || (Array.isArray(details.servicesOffered) && details.servicesOffered.length > 0 ? details.servicesOffered.join(', ') : 'Not Provided')}
+                          </div>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Trade License / ITI ID</span>
-                          <div className="font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">{details.certificationId || 'ITI-BLR-2022'}</div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Experience</span>
+                          <div className="font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
+                            {details.experienceYears !== null && details.experienceYears !== undefined ? `${details.experienceYears} yrs` : (details.certificationId || 'Not Provided')}
+                          </div>
                         </div>
                         <div>
                           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Service Operational Zone</span>
-                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.serviceZone || 'Central Zone'}</div>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.division || details.city || details.serviceZone || 'Not Provided'}</div>
                         </div>
                       </div>
                     )}
@@ -1383,18 +1402,18 @@ export const KycVerificationWorkbench: React.FC<KycVerificationWorkbenchProps> =
                         </div>
                         <div>
                           <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Bank Name</span>
-                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.bankDetails.bankName || 'State Bank of India'}</div>
+                          <div className="text-slate-700 dark:text-slate-300 mt-0.5">{details.bankDetails.bankName || 'Not Provided'}</div>
                         </div>
                         <div>
                           <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">Account Number</span>
                           <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                            {unmaskedSensitive?.bankAccount || details.bankDetails.accountNumber || '••••••••7812'}
+                            {unmaskedSensitive?.bankAccount || details.bankDetails.accountNumberMasked || details.bankDetails.accountNumber || 'Not Provided'}
                           </div>
                         </div>
                         <div>
                           <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">IFSC Code</span>
                           <div className="font-mono text-slate-700 dark:text-slate-300 mt-0.5">
-                            {unmaskedSensitive?.ifsc || details.bankDetails.ifscCode || 'SBIN0001234'}
+                            {unmaskedSensitive?.ifsc || details.bankDetails.ifscCode || 'Not Provided'}
                           </div>
                         </div>
                         {details.bankDetails.branchName && (

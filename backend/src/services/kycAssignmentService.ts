@@ -1,8 +1,95 @@
+import mongoose from 'mongoose';
 import { Employee } from '../models/Employee';
 import { KycRequest } from '../models/KycRequest';
-import { Role, KycStatus, Department } from '../config/constants';
+import { NotificationItem } from '../models/NotificationItem';
+import { ApplicantType, Role, KycStatus, Department } from '../config/constants';
+import { generateId } from '../utils/security';
 
 export class KycAssignmentService {
+  private static async notifyAndSyncAssignment(
+    request: any,
+    employee: { employeeId: string; name: string },
+    isReassignment: boolean
+  ): Promise<void> {
+    try {
+      const actionUrl =
+        request.applicantType === ApplicantType.DELIVERY_PARTNER
+          ? '/kyc/delivery-partner'
+          : request.applicantType === ApplicantType.TECHNICIAN
+            ? '/kyc/technician'
+            : '/kyc';
+
+      const title = isReassignment
+        ? `KYC Application Reassigned: ${request.requestId}`
+        : `KYC Application Assigned: ${request.requestId}`;
+
+      const existingNotif = await NotificationItem.findOne({
+        targetEmployeeId: employee.employeeId,
+        title,
+        isRead: false
+      });
+
+      if (!existingNotif) {
+        await NotificationItem.create({
+          notificationId: generateId('NOTIF'),
+          targetRole: Role.KYC_EMPLOYEE,
+          targetEmployeeId: employee.employeeId,
+          targetDepartment: Department.KYC,
+          title,
+          message: `${request.applicantType} KYC for ${request.applicantName} (${request.applicantId}) has been assigned to you.`,
+          type: 'KYC',
+          actionUrl
+        });
+      }
+
+      if (
+        request.applicantType === ApplicantType.DELIVERY_PARTNER ||
+        request.applicantType === ApplicantType.TECHNICIAN
+      ) {
+        const db = mongoose.connection.db;
+        if (db) {
+          const applicantId = String(request.applicantId || '');
+          const partnerQuery: any = {
+            $or: [
+              { id: applicantId },
+              ...(mongoose.Types.ObjectId.isValid(applicantId) ? [{ _id: new mongoose.Types.ObjectId(applicantId) }] : []),
+              ...(request.phone ? [{ mobile: request.phone }] : [])
+            ]
+          };
+          const nowIso = new Date().toISOString();
+          await db.collection('delivery_partners').updateOne(
+            { ...partnerQuery, kyc_status: { $in: [null, '', 'pending', 'assigned'] } },
+            {
+              $set: {
+                kyc_status: 'assigned',
+                kyc_assigned_to: employee.name,
+                kyc_request_id: request.requestId,
+                updated_at: nowIso
+              }
+            }
+          );
+          await db.collection('delivery_partners').updateOne(
+            partnerQuery,
+            { $set: { kyc_assigned_to: employee.name } }
+          );
+
+          await db.collection('notifications').insertOne({
+            id: `notif_kyc_assign_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            partner_id: applicantId,
+            partnerId: applicantId,
+            title: 'KYC Review Assigned',
+            body: `Your ${request.applicantType} KYC request (${request.requestId}) is now assigned to ${employee.name} for verification.`,
+            category: 'kyc',
+            reference_id: request.requestId,
+            read: false,
+            created_at: nowIso
+          });
+        }
+      }
+    } catch (e: any) {
+      console.warn('[KYC Assignment Notification Warning]:', e.message);
+    }
+  }
   /**
    * Distribute unassigned KYC requests automatically based on least active load.
    */
@@ -68,6 +155,7 @@ export class KycAssignmentService {
     });
 
     await request.save();
+    await KycAssignmentService.notifyAndSyncAssignment(request, selected, false);
     return request;
   }
 
@@ -120,6 +208,7 @@ export class KycAssignmentService {
     });
 
     await request.save();
+    await KycAssignmentService.notifyAndSyncAssignment(request, targetEmployee, isReassignment);
     return request;
   }
 }
